@@ -1,0 +1,536 @@
+"""
+=============================================================================
+ MULTI-CUSTOMER SOLAR OPEN ACCESS / GROUP CAPTIVE FINANCIAL SIMULATOR (v2)
+ -- CORE BACKEND (GUI-ready) --
+
+ This file is your original calculator. ONLY two kinds of change made,
+ both non-logic:
+
+   1. Tariffs.PPA_RATE / Tariffs.BANK_SETTLEMENT_RATE no longer call
+      input() at import time (that would freeze a GUI app). They are now
+      plain class attrs with placeholder defaults, set via
+      Tariffs.configure(...) from the Settings page. Every formula that
+      USES these values is 100% unchanged.
+
+   2. collect_capacity()/collect_partners_interactively()/main() (pure
+      input()-driven console glue) removed -- replaced by GUI code in
+      app.py. print_annual_summary() / print_project_summary() keep their
+      original print() lines untouched AND now also return a dict of the
+      exact same computed values (same expressions, same order) so the
+      GUI can render them without re-deriving any math.
+
+ No formula, condition, loop, or business rule inside Tariffs, PPAPartner,
+ BankingEngine, BillingEngine, or SolarPlant.run() was touched.
+=============================================================================
+"""
+
+from typing import List, Dict
+
+
+# ---------------------------------------------------------------------------
+# 1. TARIFF / CONSTANT TABLE  (all rupee rates & rules live here)
+# ---------------------------------------------------------------------------
+class Tariffs:
+    PPA_RATE = 4.50                 # Rs/unit paid by customers to the solar plant (placeholder -- set in Settings)
+    GOV_PPA_RATE = 8.4              # Rs/unit -- grid/utility tariff
+    GOV_OG_RATE = 10.58             # Rs/unit -- grid/utility tariff including all charges (peak-hour, fixed charges etc.)
+    MPEB_DEDUCTION = 0.032           # 3.2% transmission/wheeling loss on gross generation
+    BANK_WITHDRAWAL_FACTOR = 0.92    # only 92% of surplus generation is bankable
+    BANK_SETTLEMENT_RATE = 3.50     # Rs/unit paid out for units left in bank at year end (placeholder -- set in Settings)
+
+    # Per-unit open-access / cross-subsidy "solar charge" -- depends on
+    # voltage level AND whether the customer is Group Captive or Third Party.
+    SOLCHR_33KV_CAPTIVE = 0.63
+    SOLCHR_11KV_CAPTIVE = 1.15
+    SOLCHR_33KV_NORMAL = 3.30
+    SOLCHR_11KV_NORMAL = 3.82
+
+    # Peak-hour (5 PM - 10 PM) billing rate, Rs/unit, by voltage level
+    PEAK_RATE_33KV = 8.4
+    PEAK_RATE_11KV = 7.5
+
+    # Partner "type" codes <= this value are treated as Group Captive (26%+ rule)
+    CAPTIVE_SHARE_MIN_PCT = 26
+    CAPTIVE_SHARE_MAX_PCT = 49
+
+    @classmethod
+    def configure(cls, **kwargs):
+        """Set any Tariffs attribute from the Settings page. Pure assignment,
+        no formula here -- every rate below is used unchanged wherever the
+        original script used it."""
+        for k, v in kwargs.items():
+            if hasattr(cls, k):
+                setattr(cls, k, v)
+
+
+# ---------------------------------------------------------------------------
+# 1B. GSA GENERATION PROFILES -- avg. daily generation (kWh/day) per month,
+#     extracted from the 3 Global Solar Atlas reports (Madhya Pradesh site)
+# ---------------------------------------------------------------------------
+MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep",
+          "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+
+DAYS_IN_MONTH = [30, 31, 30, 31, 31, 30, 31, 30, 31, 31, 28, 31]
+# capacity (kW) -> average DAILY generation (kWh/day) for each month, Jan..Dec
+GSA_DAILY_GENERATION = {
+    500: [2588, 2369, 1866, 1344, 1431, 1930,
+          2416, 2364, 2334, 2396, 2654, 2715],
+
+    1000: [5176, 4739, 3733, 2687, 2862, 3860,
+           4833, 4728, 4667, 4792, 5307, 5429],
+
+    1500: [7791, 7153, 5634, 4047, 4268, 5834,
+           7317, 7109, 6984, 7200, 7974, 8152],
+}
+
+SUPPORTED_CAPACITIES_KW = sorted(GSA_DAILY_GENERATION.keys())
+
+# ---------------------------------------------------------------------------
+# 1C. PLANT-WISE MONTHLY SOLAR ALLOCATION LIMITS (new, additive)
+#     -- total contracted units a plant is allowed to allocate per month,
+#        regardless of how many real customers actually sign up.
+# ---------------------------------------------------------------------------
+ALLOCATION_LIMIT_UNITS = {
+    500: 66000,
+    1000: 126000,
+    1500: 192000,
+}
+
+
+def get_allocation_limit(capacity_kw: int) -> float:
+    """Fixed monthly allocation limit (units) for a plant capacity."""
+    if capacity_kw not in ALLOCATION_LIMIT_UNITS:
+        raise ValueError(
+            f"No allocation limit defined for {capacity_kw} kW. "
+            f"Supported: {sorted(ALLOCATION_LIMIT_UNITS.keys())}"
+        )
+    return ALLOCATION_LIMIT_UNITS[capacity_kw]
+
+
+
+def get_monthly_generation(capacity_kw: int) -> List[float]:
+    """
+    Monthly generation (units) = avg daily generation (kWh/day) x days in
+    that month, for the chosen plant capacity, using the GSA report data.
+    """
+    if capacity_kw not in GSA_DAILY_GENERATION:
+        raise ValueError(
+            f"No GSA data available for {capacity_kw} kW. "
+            f"Supported capacities: {SUPPORTED_CAPACITIES_KW}"
+        )
+    daily = GSA_DAILY_GENERATION[capacity_kw]
+    return [round(daily[i] * DAYS_IN_MONTH[i], 1) for i in range(12)]
+
+
+def get_max_customers(capacity_kw: int) -> int:
+    """
+    Max customers allowed for a plant = capacity_kW // 100, minimum 1.
+    e.g. 500 kW -> 5, 1000 kW -> 10, 1500 kW -> 15.
+    """
+    return max(1, capacity_kw // 100)
+
+
+# ---------------------------------------------------------------------------
+# 2. PPA PARTNER (a single customer / off-taker)
+# ---------------------------------------------------------------------------
+class PPAPartner:
+    def __init__(self, name: str, monthly_units: float, kv_level: int,
+                 partner_type: int, fixed_charge: float,
+                 captive_share_pct: float = 0, peak_units: float = 0):
+        self.name = name
+        self.monthly_units = monthly_units          # contracted units required / month
+        self.kv_level = kv_level                    # 11 or 33
+        self.partner_type = partner_type             # <=26 -> Group Captive, else Third Party
+        self.fixed_charge = fixed_charge              # Rs, per-customer fixed charge on solar bill
+        self.captive_share_pct = captive_share_pct    # % equity held (only used if captive)
+        self.peak_units = peak_units                  # units consumed 5PM-10PM
+
+        self.is_captive = (
+    Tariffs.CAPTIVE_SHARE_MIN_PCT <= captive_share_pct <= Tariffs.CAPTIVE_SHARE_MAX_PCT
+)
+
+        self.is_mock = False   # new, additive flag -- True only for the auto-generated
+                                 # "Mock Customer / Unallocated Capacity". Does not affect
+                                 # any existing formula; PPAPartner behaves identically either way.
+
+        self.monthly_records: List[Dict] = []
+        self.annual = {
+            "solar_units": 0.0, "gov_units": 0.0, "revenue": 0.0,
+            "expense_share": 0.0, "profit": 0.0,
+            "solbill": 0.0, "govbill": 0.0, "ogbill": 0.0,
+        }
+
+    def captive_equity_value(self, project_equity: float) -> float:
+        """Rupee value of plant equity attributable to this captive partner."""
+        if not self.is_captive:
+            return 0.0
+        return project_equity * (self.captive_share_pct / 100)
+
+    def record_month(self, record: Dict):
+        self.monthly_records.append(record)
+        self.annual["solar_units"] += record["solar_units"]
+        self.annual["gov_units"] += record["gov_units"]
+        self.annual["revenue"] += record["revenue"]
+        self.annual["expense_share"] += record["expense_share"]
+        self.annual["profit"] += record["profit"]
+        self.annual["solbill"] += record["solbill"]
+        self.annual["govbill"] += record["govbill"]
+        self.annual["ogbill"] += record["ogbill"]
+
+
+# ---------------------------------------------------------------------------
+# 3. BANKING ENGINE -- plant-level surplus/deficit banking (shared pool)
+# ---------------------------------------------------------------------------
+class BankingEngine:
+    def __init__(self, opening_bank: float = 0):
+        self.bank = opening_bank
+
+    def process_month(self, net_generation: float, total_contracted_units: float):
+        """
+        Same rule as the original script, applied at whole-plant level:
+          - if generation covers demand -> bank the surplus (at 92%)
+          - else draw down the bank first, then request government units
+        Returns: (total_solar_units_supplied, total_gov_units_needed, units_banked_this_month)
+        """
+        banked_this_month = 0.0
+        gov_units = 0.0
+
+        if net_generation >= total_contracted_units:
+            surplus = net_generation - total_contracted_units
+            banked_this_month = surplus * Tariffs.BANK_WITHDRAWAL_FACTOR
+            self.bank += banked_this_month
+            total_solar_supplied = total_contracted_units
+        else:
+            deficit = total_contracted_units - net_generation
+            if self.bank >= deficit:
+                self.bank -= deficit
+                total_solar_supplied = total_contracted_units
+            else:
+                gov_units = deficit - self.bank
+                self.bank = 0.0
+                total_solar_supplied = total_contracted_units - gov_units
+
+        self.bank = max(0.0, self.bank)   # <-- bank kabhi negative na jaaye, safety clamp
+        return total_solar_supplied, gov_units, banked_this_month
+
+# ---------------------------------------------------------------------------
+# 4. BILLING ENGINE -- per-customer bill & saving calculations
+# ---------------------------------------------------------------------------
+class BillingEngine:
+    @staticmethod
+    def solar_bill(partner: PPAPartner, solar_units: float) -> float:
+        rate = (Tariffs.SOLCHR_33KV_CAPTIVE if partner.kv_level == 33 and partner.is_captive
+                else Tariffs.SOLCHR_33KV_NORMAL if partner.kv_level == 33
+                else Tariffs.SOLCHR_11KV_CAPTIVE if partner.is_captive
+                else Tariffs.SOLCHR_11KV_NORMAL)
+
+        return (solar_units * (Tariffs.PPA_RATE + rate)) + partner.fixed_charge 
+
+
+    @staticmethod
+    def gov_bill(partner: PPAPartner, gov_units: float) -> float:
+        peak_rate = Tariffs.PEAK_RATE_33KV if partner.kv_level == 33 else Tariffs.PEAK_RATE_11KV
+        peak_bill = partner.peak_units * peak_rate
+        return (gov_units * Tariffs.GOV_PPA_RATE) + peak_bill
+
+    @staticmethod
+    def original_gov_bill(partner: PPAPartner) -> float:
+        """What the customer would pay if 100% of their power came from the grid,
+        including the peak-hour charge they'd still pay either way."""
+        peak_rate = Tariffs.PEAK_RATE_33KV if partner.kv_level == 33 else Tariffs.PEAK_RATE_11KV
+        peak_bill = partner.peak_units * peak_rate
+        return (partner.monthly_units * Tariffs.GOV_OG_RATE) + peak_bill + partner.fixed_charge
+
+    @staticmethod
+    def saving_pct(solbill: float, govbill: float, ogbill: float) -> float:
+        if ogbill == 0:
+            return 0.0
+        return 1 - ((solbill + govbill) / ogbill)
+
+
+# ---------------------------------------------------------------------------
+# 5. SOLAR PLANT -- top-level orchestrator tying everything together
+# ---------------------------------------------------------------------------
+class SolarPlant:
+    def __init__(self, project_cost: float, equity_pct: float, emi: float,
+                 om: float, months: List[str], generation: List[float],
+                 capacity_kw: int):
+        self.project_cost = project_cost
+        self.equity = project_cost * equity_pct
+        self.emi = emi
+        self.om = om
+        self.monthly_expense = emi + om
+        self.months = months            # e.g. ["Jan", "Feb", ...]
+        self.generation = generation    # gross generation values, parallel to `months`
+        self.capacity_kw = capacity_kw
+        self.max_customers = get_max_customers(capacity_kw)
+
+        self.partners: List[PPAPartner] = []
+        self.banking = BankingEngine()
+
+        self.annual = {
+            "gross_gen": 0.0, "net_gen": 0.0, "solar_units": 0.0,
+            "gov_units": 0.0, "revenue": 0.0, "banked_units": 0.0,
+        }
+
+    def add_partner(self, partner: PPAPartner):
+        if len(self.partners) >= self.max_customers:
+            print(
+                f"  [!] Cannot add '{partner.name}': plant capacity "
+                f"{self.capacity_kw} kW allows a maximum of "
+                f"{self.max_customers} customer(s). Skipping this partner."
+            )
+            return
+        self.partners.append(partner)
+
+    def total_contracted_units(self) -> float:
+        return sum(p.monthly_units for p in self.partners)
+
+    # -----------------------------------------------------------------
+    # NEW, ADDITIVE: auto-fill plant allocation with a Mock Customer.
+    # Does not touch add_partner(), total_contracted_units(), run(), or
+    # any billing/banking formula -- it only decides whether to append one
+    # extra PPAPartner before run() is called.
+    # -----------------------------------------------------------------
+    def add_mock_customer_if_needed(self, kv_level: int = 33,
+                                     fixed_charge: float = 0.0,
+                                     peak_units: float = 0.0) -> "PPAPartner | None":
+        """
+        Compares the sum of REAL customers' monthly_units against this
+        plant's fixed monthly allocation limit (get_allocation_limit).
+        If real customers require less than the limit, auto-creates a
+        clearly labelled 'Mock Customer / Unallocated Capacity' PPAPartner
+        for exactly the remaining units, and appends it directly to
+        self.partners (bypassing the max_customers cap -- the mock is not
+        a real PPA customer and must never count against that limit or be
+        confused with one).
+
+        The mock customer then flows through run() / billing / P&L exactly
+        like any other partner, because run() already loops over
+        self.partners unconditionally -- no change needed there.
+
+        Returns the created PPAPartner, or None if real customers already
+        meet/exceed the allocation limit (nothing to fill).
+        """
+        limit = get_allocation_limit(self.capacity_kw)
+        real_total = sum(p.monthly_units for p in self.partners if not p.is_mock)
+        remaining = limit - real_total
+        if remaining <= 0:
+            return None
+
+        mock = PPAPartner(
+            name="Mock Customer / Unallocated Capacity",
+            monthly_units=remaining,
+            kv_level=kv_level,
+            partner_type=50,
+            fixed_charge=fixed_charge,
+            captive_share_pct=0,
+            peak_units=peak_units,
+        )
+        mock.is_mock = True
+        self.partners.append(mock)   # deliberately bypasses add_partner()'s
+                                       # max_customers cap -- mock is not real
+        return mock
+
+    # -----------------------------------------------------------------
+    # NEW, ADDITIVE: Group-Captive equity-stake / funding report.
+    # Purely a read-only calculation on top of already-computed values
+    # (self.equity, partner.monthly_units, total_contracted_units()).
+    # Does NOT alter is_captive, solar_bill, gov_bill, revenue, or any
+    # other existing formula -- it is an extra report, not a replacement.
+    # -----------------------------------------------------------------
+    def compute_captive_funding(self, total_captive_pct: float) -> Dict[str, Dict]:
+        """
+        total_captive_pct: the PROJECT-WIDE Group Captive equity stake the
+        user has chosen for this plant, configurable between 26% and 49%
+        (per the Group Captive regulatory band).
+
+        Every partner currently on the plant -- real customers AND the
+        Mock Customer if one was added -- gets a slice of that stake
+        proportional to their unit ratio:
+
+            unit_ratio        = partner.monthly_units / total_contracted_units()
+            captive_equity_pct = total_captive_pct * unit_ratio
+            captive_funding    = self.equity * (captive_equity_pct / 100)
+
+        Because every partner's unit_ratio together sums to 1 (mock fills
+        exactly the remaining units), the captive_equity_pct slices sum to
+        exactly total_captive_pct -- so whatever real customers don't
+        claim automatically lands on the Mock Customer with no separate
+        'leftover' step required.
+        """
+        total_con = self.total_contracted_units()
+        out: Dict[str, Dict] = {}
+        if total_con == 0:
+            return out
+        for p in self.partners:
+            unit_ratio = p.monthly_units / total_con
+            captive_equity_pct = total_captive_pct * unit_ratio
+            captive_funding = self.equity * (captive_equity_pct / 100)
+            out[p.name] = {
+                "is_mock": p.is_mock,
+                "monthly_units": p.monthly_units,
+                "unit_ratio_pct": unit_ratio * 100,
+                "captive_equity_pct": captive_equity_pct,
+                "captive_funding_amount": captive_funding,
+            }
+        return out
+
+
+    def run(self):
+        total_con = self.total_contracted_units()
+        if total_con == 0:
+            raise ValueError("No PPA partners added, or total contracted units is zero.")
+
+        for month, gross in zip(self.months, self.generation):
+            # --- Step 1: MPEB (transmission) deduction ---
+            net = gross * (1 - Tariffs.MPEB_DEDUCTION)
+
+            # --- Step 2: plant-level banking decision (shared bank) ---
+            total_solar, total_gov, banked = self.banking.process_month(net, total_con)
+
+            month_revenue = total_solar * Tariffs.PPA_RATE
+            month_PL = month_revenue - self.monthly_expense
+
+            self.annual["gross_gen"] += gross
+            self.annual["net_gen"] += net
+            self.annual["solar_units"] += total_solar
+            self.annual["gov_units"] += total_gov
+            self.annual["revenue"] += month_revenue
+            self.annual["banked_units"] += banked
+
+            print(f"\n===== {month} =====")
+            print(f"Gross={gross:.1f} | Net={net:.1f} | Bank={self.banking.bank:.1f} | "
+                  f"PlantSolarUnits={total_solar:.1f} | PlantGovUnits={total_gov:.1f} | "
+                  f"PlantRevenue={month_revenue:.1f} | PlantP&L={month_PL:.1f}")
+
+            # --- Step 3: allocate to each customer, proportional to their share ---
+            for partner in self.partners:
+                share = partner.monthly_units / total_con
+
+                gov_units_p = total_gov * share
+                solar_units_p = partner.monthly_units - gov_units_p
+
+                emi_share = self.emi * share
+                om_share = self.om * share
+                expense_share = emi_share + om_share
+
+                revenue_p = solar_units_p * Tariffs.PPA_RATE
+                profit_p = revenue_p - expense_share
+
+                solbill = BillingEngine.solar_bill(partner, solar_units_p)
+                govbill = BillingEngine.gov_bill(partner, gov_units_p)
+                ogbill = BillingEngine.original_gov_bill(partner)
+                saving = BillingEngine.saving_pct(solbill, govbill, ogbill)
+
+                record = {
+                    "month": month, "gross_gen": gross, "net_gen": net,
+                    "bank": self.banking.bank, "solar_units": solar_units_p,
+                    "gov_units": gov_units_p, "revenue": revenue_p,
+                    "emi_share": emi_share, "om_share": om_share,
+                    "expense_share": expense_share, "profit": profit_p,
+                    "solbill": solbill, "govbill": govbill, "ogbill": ogbill,
+                    "saving": saving,
+                }
+                partner.record_month(record)
+
+                print(
+                    f"  [{partner.name:<12}] Solar={solar_units_p:8.1f} | Gov={gov_units_p:7.1f} | "
+                    f"Rev={revenue_p:9.1f} | EMIshr={emi_share:8.1f} | O&Mshr={om_share:7.1f} | "
+                    f"ExpShr={expense_share:8.1f} | P&L={profit_p:9.1f} | "
+                    f"SolBill={solbill:9.1f} | GovBill={govbill:8.1f} | OGBill={ogbill:8.1f} | "
+                    f"Saving={saving * 100:5.1f}% |"
+                )
+
+    # -----------------------------------------------------------------
+    def print_annual_summary(self) -> Dict[str, Dict]:
+        """Same computation as v1, per customer. Now also returns the values
+        as a dict (same expressions, same order) so a GUI can render them
+        without recomputing any business rule."""
+        print("\n\n################ ANNUAL SUMMARY (PER CUSTOMER) ################")
+        out = {}
+        for p in self.partners:
+            a = p.annual
+            avg_saving = (1 - (a["solbill"] + a["govbill"]) / a["ogbill"]) if a["ogbill"] else 0
+            print(f"\n--- {p.name} ---")
+            print(f"  Annual Solar Units  : {a['solar_units']:.1f}")
+            print(f"  Annual Gov Units    : {a['gov_units']:.1f}")
+            print(f"  Annual Revenue      : {a['revenue']:.1f}")
+            print(f"  Annual Expense Share: {a['expense_share']:.1f}")
+            print(f"  Annual Profit       : {a['profit']:.1f}")
+            print(f"  Annual Saving       : {avg_saving * 100:.1f}%")
+            print(f"  Fixed Charge (input): {p.fixed_charge:.1f}")
+            captive_equity = None
+            if p.is_captive:
+                captive_equity = p.captive_equity_value(self.equity)
+                print(f"  Captive Equity Value: {captive_equity:.1f}")
+
+            out[p.name] = {
+                "solar_units": a["solar_units"],
+                "gov_units": a["gov_units"],
+                "revenue": a["revenue"],
+                "expense_share": a["expense_share"],
+                "profit": a["profit"],
+                "avg_saving_pct": avg_saving * 100,
+                "fixed_charge": p.fixed_charge,
+                "is_captive": p.is_captive,
+                "captive_equity_value": captive_equity,
+                "solbill_annual": a["solbill"],
+                "govbill_annual": a["govbill"],
+                "ogbill_annual": a["ogbill"],
+                "monthly_records": p.monthly_records,
+            }
+        return out
+
+    # -----------------------------------------------------------------
+    def print_project_summary(self) -> Dict:
+        """Same computation as v1, at plant level. Now also returns the
+        values as a dict (same expressions, same order) for GUI use."""
+        total_emi = self.emi * 12
+        total_om = self.om * 12
+        total_expense = total_emi + total_om
+        bank_revenue = self.banking.bank * Tariffs.BANK_SETTLEMENT_RATE
+        total_revenue = self.annual["revenue"] + bank_revenue
+        total_profit = total_revenue - total_expense
+
+        rated_capacity_basis = sum(self.generation) if self.generation else 0
+        utilization = (self.annual["net_gen"] / rated_capacity_basis * 100) if rated_capacity_basis else 0
+        roi = (total_profit / self.equity * 100) if self.equity else 0
+        payback_years = (self.equity / total_profit) if total_profit > 0 else float("inf")
+
+        print("\n\n################ OVERALL PROJECT SUMMARY ################")
+        print(f"Plant Capacity     : {self.capacity_kw} kW")
+        print(f"Max Customers Rule : {self.max_customers} (capacity_kW // 100, min 1)")
+        print(f"Customers Added    : {len(self.partners)}")
+        print(f"Total Generation   : {self.annual['gross_gen']:.1f}")
+        print(f"Total Banked Units : {self.annual['banked_units']:.1f}")
+        print(f"Total Gov Units    : {self.annual['gov_units']:.1f}")
+        print(f"Total Revenue      : {total_revenue:.1f}")
+        print(f"Total EMI          : {total_emi:.1f}")
+        print(f"Total O&M          : {total_om:.1f}")
+        print(f"Total Expenses     : {total_expense:.1f}")
+        print(f"Total Profit       : {total_profit:.1f}")
+        print(f"Plant Utilization  : {utilization:.1f}%")
+        print(f"Banked Units Lapsed (31-Mar)      : {self.banking.bank:.1f}")
+        print(f"Government Payout for Lapsed Bank : {bank_revenue:.1f}  (@ Rs.{Tariffs.BANK_SETTLEMENT_RATE}/unit)")
+        print(f"ROI                : {roi:.1f}%")
+        print(f"Payback Period     : {payback_years:.1f} years")
+
+        return {
+            "capacity_kw": self.capacity_kw,
+            "max_customers": self.max_customers,
+            "customers_added": len(self.partners),
+            "total_generation": self.annual["gross_gen"],
+            "total_banked_units": self.annual["banked_units"],
+            "total_gov_units": self.annual["gov_units"],
+            "total_revenue": total_revenue,
+            "total_emi": total_emi,
+            "total_om": total_om,
+            "total_expense": total_expense,
+            "total_profit": total_profit,
+            "plant_utilization_pct": utilization,
+            "bank_lapsed_units": self.banking.bank,
+            "bank_lapsed_payout": bank_revenue,
+            "roi_pct": roi,
+            "payback_years": payback_years,
+        }
