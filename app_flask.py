@@ -298,9 +298,15 @@ def simulate_step2():
           </div>
           <div class="row2">
             {num_field(f'fc_{i}', 'Fixed Charge (Rs)', SETTINGS['default_fixed_charge'])}
-            {num_field(f'cap_{i}', 'Equity Shareholding % (0 if none)', SETTINGS['default_captive_pct'])}
+            {num_field(f'peak_{i}', 'Peak Hour Units (5PM-10PM)', SETTINGS['default_peak_units'])}
           </div>
-          {num_field(f'peak_{i}', 'Peak Hour Units (5PM-10PM)', SETTINGS['default_peak_units'])}
+
+          <label>Are you enrolling this customer under Group Captive?</label>
+          <select name="enroll_{i}">
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+          {num_field(f'cap_{i}', "Individual Captive Share % (used only if enrolled = Yes)", SETTINGS['default_captive_pct'])}
         </div>
         """)
 
@@ -341,18 +347,21 @@ def run_simulation():
         capacity_kw=capacity_kw,
     )
 
+    enrollment = {}
     for i in range(n):
         name = request.form[f"name_{i}"]
         units = float(request.form[f"units_{i}"])
         kv = int(request.form[f"kv_{i}"])
         fixed_charge = float(request.form[f"fc_{i}"])
-        captive_pct = float(request.form[f"cap_{i}"])
+        enroll_flag = request.form.get(f"enroll_{i}", "no") == "yes"
+        captive_pct = float(request.form[f"cap_{i}"]) if enroll_flag else 0.0
         peak = float(request.form[f"peak_{i}"])
         ptype = 26 if Tariffs.CAPTIVE_SHARE_MIN_PCT <= captive_pct <= Tariffs.CAPTIVE_SHARE_MAX_PCT else 50
         plant.add_partner(PPAPartner(name, units, kv, ptype,
                                       fixed_charge=fixed_charge,
                                       captive_share_pct=captive_pct,
                                       peak_units=peak))
+        enrollment[name] = enroll_flag
 
     real_total_units = plant.total_contracted_units()
 
@@ -361,6 +370,13 @@ def run_simulation():
     # allocation limit for this capacity. Does not touch run()/billing --
     # the mock is just another PPAPartner appended before run() executes.
     mock_partner = plant.add_mock_customer_if_needed()
+
+    # NEW: aggregate Group Captive enrollment rule -- sums the opted-in
+    # customers' individual captive shares; if combined >= minimum %,
+    # those customers are classified Group Captive (their is_captive flag
+    # is set True so the unchanged solar_bill()/captive_equity_value()
+    # formulas apply the captive rate/ownership calc during run() below).
+    captive_enrollment_result = plant.apply_group_captive_enrollment(enrollment)
 
     total_captive_pct = SETTINGS["total_captive_pct"]
 
@@ -393,6 +409,24 @@ def run_simulation():
           Real customers already claim {real_total_units:,.0f} units/month (limit {get_allocation_limit(capacity_kw):,.0f}) -- no Mock Customer needed.
         </div>
         """
+
+    # NEW: aggregate Group Captive enrollment status card
+    gc = captive_enrollment_result
+    gc_color = "#0c5e30" if gc["qualifies"] else "#b45309"
+    gc_status_text = (
+        "Group Captive requirement MET -- enrolled customers billed at the captive rate."
+        if gc["qualifies"] else
+        "Group Captive requirement NOT met -- enrolled customers billed at the normal (third-party) rate until the aggregate reaches the minimum."
+    )
+    gc_enrolled_list = ", ".join(gc["enrolled_names"]) if gc["enrolled_names"] else "None"
+    group_captive_card = f"""
+    <div class="card">
+      <h2>Group Captive -- Aggregate Enrollment Status</h2>
+      <p>Enrolled customers: <b>{gc_enrolled_list}</b></p>
+      <p>Combined (aggregate) captive share: <b>{gc['aggregate_pct']:.2f}%</b> &nbsp;|&nbsp; Requirement: &ge; {gc['min_required_pct']:.0f}%</p>
+      <p style="color:{gc_color};font-weight:700;">{gc_status_text}</p>
+    </div>
+    """
 
     metrics = f"""
     <div class="metric"><div class="v">Rs {ps['total_revenue']:,.0f}</div><div class="l">Total Revenue</div></div>
@@ -430,6 +464,7 @@ def run_simulation():
             ("Avg. Saving vs Grid", f"{a['avg_saving_pct']:.1f}%"),
             ("Expense Share (yr)", f"Rs {a['expense_share']:,.0f}"),
             ("Fixed Charge (per bill)", f"Rs {a['fixed_charge']:,.0f}"),
+            ("Enrolled in Group Captive?", "Yes" if enrollment.get(name, False) else "No"),
             ("Group Captive? (billing rate)", "Yes" if a["is_captive"] else "No"),
         ]
         if a["is_captive"]:
@@ -476,6 +511,7 @@ def run_simulation():
 
     body = f"""
     {allocation_note}
+    {group_captive_card}
     <div class="card">
       <h2>&#128202; Overall Project Summary</h2>
       {metrics}
