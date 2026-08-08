@@ -376,7 +376,52 @@ class SolarPlant:
             }
         return out
 
+    # -----------------------------------------------------------------
+    # NEW, ADDITIVE: aggregate Group-Captive enrollment/eligibility rule.
+    #
+    # Each customer opts in ("Are you enrolling this customer under Group
+    # Captive?") with their own individual captive share %. This method
+    # sums the opted-in customers' shares; if the combined (aggregate)
+    # share is >= Tariffs.CAPTIVE_SHARE_MIN_PCT, those customers are
+    # classified Group Captive. If not, none of them are.
+    #
+    # It does NOT change is_captive's original per-customer formula
+    # (still `MIN_PCT <= captive_share_pct <= MAX_PCT`, still lives in
+    # PPAPartner.__init__, untouched) or solar_bill()/gov_bill()/
+    # captive_equity_value() -- it simply flips the already-existing
+    # is_captive boolean AFTER construction, based on this new aggregate
+    # rule, so that when solar_bill() later reads partner.is_captive
+    # during run(), the unchanged formula automatically applies the
+    # captive rate to whichever customers the aggregate rule qualifies.
+    # Call this BEFORE run() so billing reflects the correct classification.
+    # -----------------------------------------------------------------
+    def apply_group_captive_enrollment(self, enrollment: Dict[str, bool]) -> Dict:
+        """
+        enrollment: {customer_name: True/False} -- whether that customer
+        opted in to Group Captive (from the "Are you enrolling this
+        customer under Group Captive?" Yes/No question).
 
+        Returns a summary dict: aggregate_pct, min_required_pct, qualifies,
+        enrolled_names -- for display ("requirement met" / "not met").
+        """
+        enrolled = [p for p in self.partners if enrollment.get(p.name, False)]
+        aggregate_pct = sum(p.captive_share_pct for p in enrolled)
+        qualifies = aggregate_pct >= Tariffs.CAPTIVE_SHARE_MIN_PCT
+
+        for p in self.partners:
+            if enrollment.get(p.name, False) and qualifies:
+                p.is_captive = True
+            else:
+                p.is_captive = False
+
+        return {
+            "aggregate_pct": aggregate_pct,
+            "min_required_pct": Tariffs.CAPTIVE_SHARE_MIN_PCT,
+            "qualifies": qualifies,
+            "enrolled_names": [p.name for p in enrolled],
+        }
+
+    # -----------------------------------------------------------------
     def run(self):
         total_con = self.total_contracted_units()
         if total_con == 0:
