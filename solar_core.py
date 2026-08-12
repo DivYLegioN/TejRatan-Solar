@@ -376,52 +376,7 @@ class SolarPlant:
             }
         return out
 
-    # -----------------------------------------------------------------
-    # NEW, ADDITIVE: aggregate Group-Captive enrollment/eligibility rule.
-    #
-    # Each customer opts in ("Are you enrolling this customer under Group
-    # Captive?") with their own individual captive share %. This method
-    # sums the opted-in customers' shares; if the combined (aggregate)
-    # share is >= Tariffs.CAPTIVE_SHARE_MIN_PCT, those customers are
-    # classified Group Captive. If not, none of them are.
-    #
-    # It does NOT change is_captive's original per-customer formula
-    # (still `MIN_PCT <= captive_share_pct <= MAX_PCT`, still lives in
-    # PPAPartner.__init__, untouched) or solar_bill()/gov_bill()/
-    # captive_equity_value() -- it simply flips the already-existing
-    # is_captive boolean AFTER construction, based on this new aggregate
-    # rule, so that when solar_bill() later reads partner.is_captive
-    # during run(), the unchanged formula automatically applies the
-    # captive rate to whichever customers the aggregate rule qualifies.
-    # Call this BEFORE run() so billing reflects the correct classification.
-    # -----------------------------------------------------------------
-    def apply_group_captive_enrollment(self, enrollment: Dict[str, bool]) -> Dict:
-        """
-        enrollment: {customer_name: True/False} -- whether that customer
-        opted in to Group Captive (from the "Are you enrolling this
-        customer under Group Captive?" Yes/No question).
 
-        Returns a summary dict: aggregate_pct, min_required_pct, qualifies,
-        enrolled_names -- for display ("requirement met" / "not met").
-        """
-        enrolled = [p for p in self.partners if enrollment.get(p.name, False)]
-        aggregate_pct = sum(p.captive_share_pct for p in enrolled)
-        qualifies = aggregate_pct >= Tariffs.CAPTIVE_SHARE_MIN_PCT
-
-        for p in self.partners:
-            if enrollment.get(p.name, False) and qualifies:
-                p.is_captive = True
-            else:
-                p.is_captive = False
-
-        return {
-            "aggregate_pct": aggregate_pct,
-            "min_required_pct": Tariffs.CAPTIVE_SHARE_MIN_PCT,
-            "qualifies": qualifies,
-            "enrolled_names": [p.name for p in enrolled],
-        }
-
-    # -----------------------------------------------------------------
     def run(self):
         total_con = self.total_contracted_units()
         if total_con == 0:
@@ -578,4 +533,328 @@ class SolarPlant:
             "bank_lapsed_payout": bank_revenue,
             "roi_pct": roi,
             "payback_years": payback_years,
+        }
+
+
+# =============================================================================
+# 6. MPPB/DISCOM TARIFF + NEW BILLING STRUCTURE (HV 3.1 / HV 3.2 / LV 4.1)
+#    -- ADDITIVE ONLY --
+#
+#    Nothing above this line was touched. This section does not read from,
+#    write to, or call Tariffs, PPAPartner, BankingEngine, BillingEngine,
+#    or SolarPlant. It is a parallel, self-contained tariff/billing module
+#    for the new MPPB/DISCOM consumer-category structure. Wire it into the
+#    GUI/app layer wherever the new categories are needed; existing Solar/
+#    PPA calculation flow (SolarPlant.run(), old BillingEngine, banking,
+#    captive equity, P&L) is completely untouched and keeps working exactly
+#    as before.
+#
+#    Captive/group-captive status is NOT recomputed here. Callers must pass
+#    in the existing `PPAPartner.is_captive` value (driven by the existing
+#    Tariffs.CAPTIVE_SHARE_MIN_PCT / CAPTIVE_SHARE_MAX_PCT / 26% rule), so
+#    the "26% equity participation" logic lives in exactly one place.
+# =============================================================================
+
+
+class MPPBTariffConfig:
+    """
+    Centralized, editable configuration for the new MPPB/DISCOM consumer
+    categories and tariff structure. All values below are DEFAULTS and are
+    meant to be changed from a Settings page via the classmethods provided
+    -- no formula in MPPBBillingEngine is hard-coded to these numbers.
+    """
+
+    # Consumer category -> allowed connection types
+    CATEGORIES: Dict[str, List[str]] = {
+        "HV_3.1": ["11kV", "33kV"],   # HV 3.1 -- Industrial
+        "HV_3.2": ["11kV", "33kV"],   # HV 3.2 -- Non-Industrial
+        "LV_4.1": ["Rural", "Urban"],  # LV 4.1
+    }
+
+    CATEGORY_LABELS = {
+        "HV_3.1": "HV 3.1 - Industrial",
+        "HV_3.2": "HV 3.2 - Non-Industrial",
+        "LV_4.1": "LV 4.1",
+    }
+
+    # (category, connection) -> Rs/unit MPPB/DISCOM energy tariff
+    TARIFF: Dict[tuple, float] = {
+        ("HV_3.1", "11kV"): 6.34,
+        ("HV_3.1", "33kV"): 6.14,
+        ("HV_3.2", "11kV"): 6.70,
+        ("HV_3.2", "33kV"): 6.50,
+        ("LV_4.1", "Rural"): 7.05,
+        ("LV_4.1", "Urban"): 7.15,
+    }
+
+    # (category, connection) -> Rs/kVA fixed-charge rate
+    FIXED_CHARGE_RATE: Dict[tuple, float] = {
+        ("HV_3.1", "11kV"): 430,
+        ("HV_3.1", "33kV"): 389,
+        ("HV_3.2", "11kV"): 510,
+        ("HV_3.2", "33kV"): 480,
+        ("LV_4.1", "Rural"): 245,
+        ("LV_4.1", "Urban"): 320,
+    }
+
+    # Solar open-access charges (Rs/unit)
+    WHEELING: Dict[str, float] = {"33kV": 0.17, "11kV": 0.69}
+    TRANSMISSION: float = 0.46
+    CSS: float = 1.49
+    ADDITIONAL_SURCHARGE: float = 1.18
+
+    # Electricity Duty: selectable, capped at 12%
+    ELECTRICITY_DUTY_OPTIONS = (9, 10, 11, 12)
+    ELECTRICITY_DUTY_PCT: float = 9
+
+    # FPPAS -- applies only to MPPB/government units, never to solar
+    FPPAS_PCT: float = 4.5
+
+    # -----------------------------------------------------------------
+    # Validation helpers (also used directly by callers/UI layers)
+    # -----------------------------------------------------------------
+    @classmethod
+    def validate_category_connection(cls, category: str, connection: str):
+        if category not in cls.CATEGORIES:
+            raise ValueError(
+                f"Invalid consumer category '{category}'. "
+                f"Valid categories: {list(cls.CATEGORIES.keys())}"
+            )
+        if connection not in cls.CATEGORIES[category]:
+            raise ValueError(
+                f"Invalid connection '{connection}' for category '{category}'. "
+                f"Valid connections: {cls.CATEGORIES[category]}"
+            )
+
+    @classmethod
+    def validate_electricity_duty(cls, duty_pct: float):
+        if duty_pct > 12:
+            raise ValueError("Electricity Duty cannot exceed 12%.")
+        if duty_pct not in cls.ELECTRICITY_DUTY_OPTIONS:
+            raise ValueError(
+                f"Electricity Duty must be one of {cls.ELECTRICITY_DUTY_OPTIONS} percent."
+            )
+
+    # -----------------------------------------------------------------
+    # Getters -- 11kV/33kV and Rural/Urban automatically select the
+    # correct rate because they are looked up by (category, connection).
+    # -----------------------------------------------------------------
+    @classmethod
+    def get_tariff(cls, category: str, connection: str) -> float:
+        cls.validate_category_connection(category, connection)
+        return cls.TARIFF[(category, connection)]
+
+    @classmethod
+    def get_fixed_charge_rate(cls, category: str, connection: str) -> float:
+        cls.validate_category_connection(category, connection)
+        return cls.FIXED_CHARGE_RATE[(category, connection)]
+
+    @classmethod
+    def get_wheeling_rate(cls, kv_level) -> float:
+        key = f"{kv_level}kV" if not isinstance(kv_level, str) else kv_level
+        if key not in cls.WHEELING:
+            raise ValueError(
+                f"Invalid kV level for wheeling charge: '{kv_level}'. "
+                f"Valid: {list(cls.WHEELING.keys())}"
+            )
+        return cls.WHEELING[key]
+
+    # -----------------------------------------------------------------
+    # Configuration setters -- values editable from a Settings page,
+    # without touching any calculation logic below.
+    # -----------------------------------------------------------------
+    @classmethod
+    def set_tariff(cls, category: str, connection: str, value: float):
+        cls.validate_category_connection(category, connection)
+        cls.TARIFF[(category, connection)] = value
+
+    @classmethod
+    def set_fixed_charge_rate(cls, category: str, connection: str, value: float):
+        cls.validate_category_connection(category, connection)
+        cls.FIXED_CHARGE_RATE[(category, connection)] = value
+
+    @classmethod
+    def set_electricity_duty_pct(cls, value: float):
+        cls.validate_electricity_duty(value)
+        cls.ELECTRICITY_DUTY_PCT = value
+
+    @classmethod
+    def configure(cls, **kwargs):
+        """Bulk-set any plain (non-dict) attribute, e.g. FPPAS_PCT, TRANSMISSION,
+        CSS, ADDITIONAL_SURCHARGE, ELECTRICITY_DUTY_PCT. For TARIFF /
+        FIXED_CHARGE_RATE / WHEELING use the dedicated setters above so
+        validation runs."""
+        for k, v in kwargs.items():
+            if hasattr(cls, k) and not isinstance(getattr(cls, k), dict):
+                setattr(cls, k, v)
+
+
+class MPPBBillingEngine:
+    """
+    New tariff & billing structure for HV 3.1 / HV 3.2 / LV 4.1 consumer
+    categories. Solar and Government/MPEB calculations are kept completely
+    independent, per spec, and are only added together in combined_bill().
+    """
+
+    # =================== GOVERNMENT / MPPB SIDE ===================
+    @staticmethod
+    def mppb_energy_charges(gov_units: float, mppb_tariff: float) -> float:
+        """MPEB Energy Charges = Government Units x MPPB Tariff"""
+        return gov_units * mppb_tariff
+
+    @staticmethod
+    def fppas(mppb_energy_charges: float, fppas_pct: float = None) -> float:
+        """FPPAS = MPEB Energy Charges x FPPAS %  (government units only)"""
+        pct = MPPBTariffConfig.FPPAS_PCT if fppas_pct is None else fppas_pct
+        return mppb_energy_charges * (pct / 100)
+
+    @staticmethod
+    def mppb_electricity_duty(gov_units: float, mppb_tariff: float,
+                               duty_pct: float = None) -> float:
+        """MPEB Electricity Duty = Government Units x MPPB Tariff x Duty %"""
+        pct = MPPBTariffConfig.ELECTRICITY_DUTY_PCT if duty_pct is None else duty_pct
+        MPPBTariffConfig.validate_electricity_duty(pct)
+        return gov_units * mppb_tariff * (pct / 100)
+
+    @staticmethod
+    def fixed_charge(contract_demand: float, fixed_charge_rate: float) -> float:
+        """Fixed Charge = Contract Demand x Applicable Fixed Charge Rate"""
+        return contract_demand * fixed_charge_rate
+
+    @staticmethod
+    def mppb_bill(gov_units: float, category: str, connection: str,
+                  contract_demand: float, duty_pct: float = None,
+                  fppas_pct: float = None, other_charges: float = 0.0) -> Dict:
+        """Independent MPPB/Government bill. Contract Demand stays a
+        customer-level input, passed in by the caller."""
+        MPPBTariffConfig.validate_category_connection(category, connection)
+        mppb_tariff = MPPBTariffConfig.get_tariff(category, connection)
+        fixed_rate = MPPBTariffConfig.get_fixed_charge_rate(category, connection)
+
+        energy_charges = MPPBBillingEngine.mppb_energy_charges(gov_units, mppb_tariff)
+        fppas_amt = MPPBBillingEngine.fppas(energy_charges, fppas_pct)
+        duty_amt = MPPBBillingEngine.mppb_electricity_duty(gov_units, mppb_tariff, duty_pct)
+        fixed_amt = MPPBBillingEngine.fixed_charge(contract_demand, fixed_rate)
+
+        total = energy_charges + fppas_amt + duty_amt + fixed_amt + other_charges
+
+        return {
+            "category": category,
+            "connection": connection,
+            "gov_units": gov_units,
+            "mppb_tariff": mppb_tariff,
+            "mppb_energy_charges": energy_charges,
+            "fppas": fppas_amt,
+            "mppb_electricity_duty": duty_amt,
+            "contract_demand": contract_demand,
+            "fixed_charge_rate": fixed_rate,
+            "fixed_charge": fixed_amt,
+            "other_charges": other_charges,
+            "total_mppb_bill": total,
+        }
+
+    # =================== SOLAR / OPEN ACCESS SIDE ===================
+    @staticmethod
+    def open_access_charges(kv_level, is_captive: bool) -> Dict[str, float]:
+        """
+        Solar open-access charges. If the customer is eligible captive/
+        group-captive (existing 26% equity rule, passed in via is_captive),
+        CSS and Additional Surcharge become zero.
+        """
+        wheeling = MPPBTariffConfig.get_wheeling_rate(kv_level)
+        transmission = MPPBTariffConfig.TRANSMISSION
+        if is_captive:
+            css = 0.0
+            additional_surcharge = 0.0
+        else:
+            css = MPPBTariffConfig.CSS
+            additional_surcharge = MPPBTariffConfig.ADDITIONAL_SURCHARGE
+        return {
+            "wheeling": wheeling,
+            "transmission": transmission,
+            "css": css,
+            "additional_surcharge": additional_surcharge,
+        }
+
+    @staticmethod
+    def landing_tariff(ppa_tariff: float, kv_level, is_captive: bool) -> float:
+        """
+        Landing Tariff = PPA Tariff + Wheeling + Transmission + CSS + Additional Surcharge
+        For an eligible captive/group-captive customer, CSS and Additional
+        Surcharge are zero, so this collapses to:
+        Landing Tariff = PPA Tariff + Wheeling + Transmission
+        """
+        oa = MPPBBillingEngine.open_access_charges(kv_level, is_captive)
+        return ppa_tariff + oa["wheeling"] + oa["transmission"] + oa["css"] + oa["additional_surcharge"]
+
+    @staticmethod
+    def solar_electricity_duty(solar_units: float, ppa_tariff: float,
+                                duty_pct: float = None) -> float:
+        """Solar Electricity Duty = Solar Units x PPA Tariff x Duty %"""
+        pct = MPPBTariffConfig.ELECTRICITY_DUTY_PCT if duty_pct is None else duty_pct
+        MPPBTariffConfig.validate_electricity_duty(pct)
+        return solar_units * ppa_tariff * (pct / 100)
+
+    @staticmethod
+    def solar_bill(solar_units: float, ppa_tariff: float, kv_level, is_captive: bool,
+                    duty_pct: float = None, other_charges: float = 0.0) -> Dict:
+        """
+        Independent solar bill. FPPAS is always zero here -- it never
+        applies to solar/PPA units, per spec.
+        """
+        oa = MPPBBillingEngine.open_access_charges(kv_level, is_captive)
+
+        ppa_energy_cost = solar_units * ppa_tariff
+        wheeling_amt = solar_units * oa["wheeling"]
+        transmission_amt = solar_units * oa["transmission"]
+        css_amt = solar_units * oa["css"]
+        additional_surcharge_amt = solar_units * oa["additional_surcharge"]
+        duty_amt = MPPBBillingEngine.solar_electricity_duty(solar_units, ppa_tariff, duty_pct)
+        solar_fppas = 0.0  # FPPAS must NOT apply to solar/PPA units
+
+        total = (ppa_energy_cost + wheeling_amt + transmission_amt + css_amt
+                 + additional_surcharge_amt + duty_amt + solar_fppas + other_charges)
+
+        return {
+            "solar_units": solar_units,
+            "ppa_tariff": ppa_tariff,
+            "ppa_energy_cost": ppa_energy_cost,
+            "wheeling": wheeling_amt,
+            "transmission": transmission_amt,
+            "css": css_amt,
+            "additional_surcharge": additional_surcharge_amt,
+            "solar_electricity_duty": duty_amt,
+            "fppas": solar_fppas,
+            "other_charges": other_charges,
+            "landing_tariff_per_unit": MPPBBillingEngine.landing_tariff(ppa_tariff, kv_level, is_captive),
+            "is_captive": is_captive,
+            "total_solar_bill": total,
+        }
+
+    # =================== COMBINED ===================
+    @staticmethod
+    def combined_bill(solar_bill: Dict, mppb_bill: Dict) -> Dict:
+        """Total Customer Bill = Solar Bill + MPPB/Government Bill.
+        No charge is double-counted: each input dict is independently
+        computed and simply summed here."""
+        total = solar_bill["total_solar_bill"] + mppb_bill["total_mppb_bill"]
+        return {
+            "solar_bill_total": solar_bill["total_solar_bill"],
+            "mppb_bill_total": mppb_bill["total_mppb_bill"],
+            "total_customer_bill": total,
+        }
+
+    @staticmethod
+    def customer_saving(original_mppb_bill: float, final_combined_bill: float) -> Dict:
+        """
+        Saving = Original MPPB/Government Bill - (Solar/Open Access Bill + Remaining MPPB/Government Bill)
+        Saving % = Saving / Original Bill x 100
+        """
+        saving = original_mppb_bill - final_combined_bill
+        saving_pct = (saving / original_mppb_bill * 100) if original_mppb_bill else 0.0
+        return {
+            "original_mppb_bill": original_mppb_bill,
+            "final_combined_bill": final_combined_bill,
+            "saving": saving,
+            "saving_pct": saving_pct,
         }
