@@ -272,7 +272,7 @@ legend{font-weight:700;padding:0 6px}
 
     $("resultMessage").textContent = "Calculating...";
     try{
-      const r = await fetch("/api/v2/calculate-billing",{
+      const r = await fetch("/api/calculate-billing",{
         method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
       });
       const d = await r.json();
