@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+ <head><script>window["__codeletBootstrap__"]=JSON.parse('{"A":"A","B":"20260812-05-370e8b7","C":{"Abril Fatface":"YACgEZbkUVE,0","Alfa Slab One":"YACgEYS9sJU,0","Anton":"YACgEcYqQ-A,0","Archivo":"YAHO2-t-jNE,0","Arial":"YAGyDvJ_4Ts,0","Bebas Neue":"YACgESME5ew,0","Bricolage Grotesque":"YAFyMcdwzpc,0","Canva Sans":"YAFLd8sKbwc,2","Caveat":"YALBs2ploWQ,0","Comic Sans MS":"YAHO2VMiyZo,0","Cormorant Garamond":"YAFdJhX-538,0","Courier New":"YAGzXiGs0_8,0","DM Sans":"YAD1aU3sLnI,0","DM Serif Display":"YAD1aYG82rc,0","Forum":"YACgEcnnqB4,0","Fraunces":"YAEul-FRQw4,0","Georgia":"YAGzXkO0pEM,0","Helvetica Neue":"YAFcf6CtJfI,0","Impact":"YAFcfnjI7Vk,0","Inter":"YAFdJvSyp_k,3","Iowan Old Style":"YAGNIFa8j9o,0","Jacques Francois":"YAHO2a5g66Q,0","JetBrains Mono":"YAFdJksXcAk,0","Libre Baskerville":"YACgEUFdPdA,0","Manrope":"YAHO2b2feC4,0","Merriweather":"YACgEXvHxxs,0","Montserrat":"YADLjI9qxTA,0","Nunito":"YACgEX8C5Gg,0","Oleo Script":"YACgEQQ14jI,0","Phantom Sans":"YAHO2E8Pb88,0","Playfair Display":"YACgEYmuCJE,0","Poppins":"YAFdJjbTu24,1","Press Start 2P":"YAFyGr-8pmQ,0","Quicksand":"YADWjpfPmdk,0","Raleway":"YACgEVg3xZg,0","Segoe UI":"YAHNdRD1Klw,0","Source Sans 3":"YAG4lO1Mj10,0","Spectral":"YAHO2rVUHIM,0","Times New Roman":"YAGzXW3gftg,0","Times":"YAGzXW3gftg,0","Ubuntu":"YACgERDU--Q,0","Work Sans":"YAGXhLOKv44,0","Yellowtail":"YACgEYG4kG4,0","ui-monospace":"YADlN8CFZ8Q,0","ui-sans-serif":"YACkoN-xg4g,0"}}');</script><script src="/_sdk/7949ff62d67710d5.telemetry_sdk.js" integrity="sha512-KIvXA82Di44YY/RH9/63A9MuTuavYgDFG8PfErJn7Wli4K0LAOk+coo/aPXk3+ZNL96nHh9VYD4PE+fLes+laQ=="></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar PPA Calculator</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Fraunces:wght@600;700&amp;display=swap" rel="stylesheet">
+  <style>
+        body { font-family: 'DM Sans', sans-serif; }
+        h1, h2, h3 { font-family: 'Fraunces', serif; }
+        .stat-card { transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); }
+        .tab-active { border-bottom: 3px solid #d97706; color: #78350f; font-weight: 600; }
+        .collapse-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+        .collapse-content.open { max-height: 5000px; }
+        select, input { font-family: 'DM Sans', sans-serif; }
+    </style>
+  <script src="/_sdk/0e8d3a91e1c6f495.data_sdk.js" type="text/javascript" integrity="sha512-c00oDoGjsMgluCLLEyVl3suwEkgjOGGplVFbsilUoBg4aMKNmsL3mwsc9r0dPn95qiSZyjBousQXgROkAW7p/w=="></script>
+  <script src="/_sdk/eba18683f23e5798.resizing_sdk.js" type="text/javascript" integrity="sha512-E0UWUllhwPXaNJtjyTKXWKrIE+FruPfFpO4mRmMDP2LI+U9bOizy5npCq6xx/JyWcvSK7D3TFf2wFR2Mha9kbA=="></script>
+ </head>
+ <body data-template-id="__page-root" class="min-h-screen w-full">
+  <header class="border-b border-amber-200/30 backdrop-blur-sm sticky top-0 z-10" style="background:rgba(255,251,235,0.95)">
+   <div class="max-w-7xl mx-auto px-6 py-4 flex items-center gap-3"><i data-lucide="sun" style="width:28px;height:28px;color:#d97706"></i>
+    <h1 data-template-id="app-title" class="canva-text font-bold"></h1>
+   </div>
+  </header>
+  <main class="max-w-7xl mx-auto px-6 py-8"><!-- Tabs -->
+   <div class="flex gap-1 border-b border-gray-200 mb-8"><button class="tab-btn tab-active px-5 py-3 text-sm" data-tab="settings">Settings</button> <button class="tab-btn px-5 py-3 text-sm text-gray-500" data-tab="customers">Customers</button> <button class="tab-btn px-5 py-3 text-sm text-gray-500" data-tab="results">Results</button>
+   </div><!-- SETTINGS TAB -->
+   <section id="tab-settings">
+    <h2 data-template-id="settings-heading" class="canva-text font-semibold mb-6"></h2>
+    <div data-template-id="settings-panel" class="canva-card rounded-2xl p-6 mb-6">
+     <h3 class="font-semibold text-gray-800 mb-4 text-lg">Plant Configuration</h3>
+     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="plant-capacity">Plant Capacity (kW)</label> <select id="plant-capacity" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none"> <option value="500">500 kW</option> <option value="1000">1000 kW</option> <option value="1500">1500 kW</option> </select>
+      </div>
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="project-cost">Project Cost (₹)</label> <input id="project-cost" type="number" value="25000000" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none">
+      </div>
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="equity-pct">Equity (%)</label> <input id="equity-pct" type="number" value="30" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none">
+      </div>
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="emi-input">Monthly EMI (₹)</label> <input id="emi-input" type="number" value="180000" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none">
+      </div>
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="om-input">Monthly O&amp;M (₹)</label> <input id="om-input" type="number" value="25000" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none">
+      </div>
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="ppa-rate">PPA Rate (₹/unit)</label> <input id="ppa-rate" type="number" step="0.01" value="4.50" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none">
+      </div>
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="bank-rate">Bank Settlement Rate (₹/unit)</label> <input id="bank-rate" type="number" step="0.01" value="3.50" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none">
+      </div>
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="captive-pct">Group Captive Equity (%)</label> <input id="captive-pct" type="number" value="26" min="26" max="49" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none">
+      </div>
+      <div><label class="block mb-1 font-medium text-gray-700 text-sm" for="duty-pct">Electricity Duty (%)</label> <select id="duty-pct" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none"> <option value="9">9%</option> <option value="10">10%</option> <option value="11">11%</option> <option value="12">12%</option> </select>
+      </div>
+     </div>
+    </div>
+    <div data-template-id="mppb-panel" class="canva-card rounded-2xl p-6">
+     <h3 class="font-semibold text-gray-800 mb-4 text-lg">MPPB / DISCOM Tariff Rates</h3>
+     <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+       <thead>
+        <tr class="border-b bg-amber-50">
+         <th class="px-3 py-2 text-left">Category</th>
+         <th class="px-3 py-2 text-left">Connection</th>
+         <th class="px-3 py-2 text-left">Tariff (₹/unit)</th>
+         <th class="px-3 py-2 text-left">Fixed Charge (₹/kVA)</th>
+        </tr>
+       </thead>
+       <tbody id="mppb-tariff-body"></tbody>
+      </table>
+     </div>
+     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+      <div>
+       <label class="block text-xs text-gray-500 mb-1">FPPAS (%)</label><input id="fppas-pct" type="number" step="0.1" value="4.5" class="w-full border rounded-lg px-2 py-1.5 text-sm">
+      </div>
+      <div>
+       <label class="block text-xs text-gray-500 mb-1">CSS (₹/unit)</label><input id="css-rate" type="number" step="0.01" value="1.49" class="w-full border rounded-lg px-2 py-1.5 text-sm">
+      </div>
+      <div>
+       <label class="block text-xs text-gray-500 mb-1">Addl. Surcharge</label><input id="addsur-rate" type="number" step="0.01" value="1.18" class="w-full border rounded-lg px-2 py-1.5 text-sm">
+      </div>
+      <div>
+       <label class="block text-xs text-gray-500 mb-1">Transmission</label><input id="trans-rate" type="number" step="0.01" value="0.46" class="w-full border rounded-lg px-2 py-1.5 text-sm">
+      </div>
+     </div>
+    </div>
+   </section><!-- CUSTOMERS TAB -->
+   <section id="tab-customers" class="hidden">
+    <div class="flex items-center justify-between mb-6">
+     <h2 data-template-id="customers-heading" class="canva-text font-semibold"></h2>
+     <div class="flex items-center gap-3"><span id="customer-count" class="text-sm text-gray-500">0 / 5 customers</span> <button id="add-customer-btn" onclick="addCustomerForm()" class="flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium shadow hover:shadow-lg transition-all" style="background:linear-gradient(135deg,#d97706,#b45309)"> <i data-lucide="plus" style="width:16px;height:16px"></i> Add Customer </button>
+     </div>
+    </div>
+    <div id="customers-list" class="space-y-4"></div>
+    <div class="mt-8 text-center"><button data-template-id="run-btn" class="canva-button px-8 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all text-lg" onclick="runSimulation()"></button>
+    </div>
+   </section><!-- RESULTS TAB -->
+   <section id="tab-results" class="hidden">
+    <div id="no-results" class="text-center py-16"><i data-lucide="bar-chart-3" style="width:48px;height:48px;color:#d4d4d4;margin:0 auto"></i>
+     <p data-template-id="no-results-text" class="canva-text mt-4 text-gray-400"></p>
+    </div>
+    <div id="results-content" class="hidden"><!-- Plant Summary -->
+     <h2 data-template-id="plant-summary-heading" class="canva-text font-semibold mb-5"></h2>
+     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+      <div data-template-id="card-generation" class="canva-card stat-card rounded-xl p-4">
+       <p class="text-xs uppercase tracking-wide text-gray-500">Total Generation</p>
+       <p id="val-generation" class="text-xl font-bold mt-1" style="color:#059669">—</p>
+      </div>
+      <div data-template-id="card-revenue" class="canva-card stat-card rounded-xl p-4">
+       <p class="text-xs uppercase tracking-wide text-gray-500">Total Revenue</p>
+       <p id="val-revenue" class="text-xl font-bold mt-1" style="color:#d97706">—</p>
+      </div>
+      <div data-template-id="card-profit" class="canva-card stat-card rounded-xl p-4">
+       <p class="text-xs uppercase tracking-wide text-gray-500">Total Profit</p>
+       <p id="val-profit" class="text-xl font-bold mt-1" style="color:#059669">—</p>
+      </div>
+      <div data-template-id="card-roi" class="canva-card stat-card rounded-xl p-4">
+       <p class="text-xs uppercase tracking-wide text-gray-500">ROI</p>
+       <p id="val-roi" class="text-xl font-bold mt-1" style="color:#7c3aed">—</p>
+      </div>
+      <div data-template-id="card-payback" class="canva-card stat-card rounded-xl p-4">
+       <p class="text-xs uppercase tracking-wide text-gray-500">Payback</p>
+       <p id="val-payback" class="text-xl font-bold mt-1" style="color:#be185d">—</p>
+      </div>
+     </div><!-- Customer Annual Summary -->
+     <h3 class="font-semibold text-gray-800 mb-3 text-lg" style="font-family:Fraunces,serif">Customer Annual Summary</h3>
+     <div data-template-id="annual-table-panel" class="canva-card rounded-2xl overflow-x-auto mb-8">
+      <table class="w-full text-sm">
+       <thead>
+        <tr class="border-b" style="background:#fef3c7">
+         <th class="px-4 py-3 text-left">Customer</th>
+         <th class="px-4 py-3 text-right">Solar Units</th>
+         <th class="px-4 py-3 text-right">Gov Units</th>
+         <th class="px-4 py-3 text-right">Revenue (₹)</th>
+         <th class="px-4 py-3 text-right">Expense (₹)</th>
+         <th class="px-4 py-3 text-right">Profit (₹)</th>
+         <th class="px-4 py-3 text-right">Saving %</th>
+        </tr>
+       </thead>
+       <tbody id="annual-summary-body"></tbody>
+      </table>
+     </div><!-- MPPB Billing -->
+     <h3 class="font-semibold text-gray-800 mb-3 text-lg" style="font-family:Fraunces,serif">MPPB Billing Breakdown</h3>
+     <div id="mppb-billing-container" class="space-y-3 mb-8"></div><!-- Captive Funding -->
+     <h3 class="font-semibold text-gray-800 mb-3 text-lg" style="font-family:Fraunces,serif">Group Captive Funding</h3>
+     <div data-template-id="captive-panel" class="canva-card rounded-2xl overflow-x-auto mb-8">
+      <table class="w-full text-sm">
+       <thead>
+        <tr class="border-b" style="background:#ede9fe">
+         <th class="px-4 py-3 text-left">Partner</th>
+         <th class="px-4 py-3 text-right">Units/Month</th>
+         <th class="px-4 py-3 text-right">Unit Ratio %</th>
+         <th class="px-4 py-3 text-right">Equity %</th>
+         <th class="px-4 py-3 text-right">Funding (₹)</th>
+        </tr>
+       </thead>
+       <tbody id="captive-body"></tbody>
+      </table>
+     </div><!-- Monthly Detail -->
+     <h3 class="font-semibold text-gray-800 mb-3 text-lg" style="font-family:Fraunces,serif">Monthly Detail</h3>
+     <div id="monthly-detail-container" class="space-y-3"></div>
+    </div>
+   </section>
+  </main>
+  <footer class="mt-12 border-t border-amber-100 py-6 text-center">
+   <p data-template-id="footer-text" class="canva-text text-sm opacity-60"></p>
+  </footer>
+  <script src="/_sdk/6e31def43ecdfeab.editing_sdk.js" integrity="sha512-dLsCmEXoPwwgpykZ4cBcMyQIrP+91IJR9KNOwXo5DW+WeKKF+Uo/SerDyq8ysa/BlG5uxbgAtmcz7kiob0VKYA=="></script>
+  <script>
+lucide.createIcons();
+
+// ===== BACKEND LOGIC PORTED TO JS =====
+const MONTHS = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
+const DAYS_IN_MONTH = [30,31,30,31,31,30,31,30,31,31,28,31];
+const GSA_DAILY = {
+    500:[2588,2369,1866,1344,1431,1930,2416,2364,2334,2396,2654,2715],
+    1000:[5176,4739,3733,2687,2862,3860,4833,4728,4667,4792,5307,5429],
+    1500:[7791,7153,5634,4047,4268,5834,7317,7109,6984,7200,7974,8152]
+};
+const ALLOC_LIMIT = {500:66000,1000:126000,1500:192000};
+
+function getMonthlyGen(cap) { return GSA_DAILY[cap].map((d,i)=>Math.round(d*DAYS_IN_MONTH[i]*10)/10); }
+
+// Tariff defaults
+let T = {
+    PPA_RATE:4.50, GOV_PPA_RATE:8.4, GOV_OG_RATE:10.58,
+    MPEB_DEDUCTION:0.032, BANK_WITHDRAWAL_FACTOR:0.92, BANK_SETTLEMENT_RATE:3.50,
+    SOLCHR_33KV_CAPTIVE:0.63, SOLCHR_11KV_CAPTIVE:1.15,
+    SOLCHR_33KV_NORMAL:3.30, SOLCHR_11KV_NORMAL:3.82,
+    PEAK_RATE_33KV:8.4, PEAK_RATE_11KV:7.5
+};
+
+// MPPB config
+let MPPB = {
+    TARIFF:{"HV_3.1_11kV":6.34,"HV_3.1_33kV":6.14,"HV_3.2_11kV":6.70,"HV_3.2_33kV":6.50,"LV_4.1_Rural":7.05,"LV_4.1_Urban":7.15},
+    FIXED:{"HV_3.1_11kV":430,"HV_3.1_33kV":389,"HV_3.2_11kV":510,"HV_3.2_33kV":480,"LV_4.1_Rural":245,"LV_4.1_Urban":320},
+    WHEELING:{"33kV":0.17,"11kV":0.69},
+    TRANSMISSION:0.46, CSS:1.49, ADDITIONAL_SURCHARGE:1.18,
+    FPPAS_PCT:4.5, DUTY_PCT:9
+};
+
+let customers = [];
+let custId = 0;
+
+function updateMaxCustomers() {
+    const cap = parseInt(document.getElementById('plant-capacity').value);
+    const max = Math.max(1, Math.floor(cap/100));
+    document.getElementById('customer-count').textContent = `${customers.length} / ${max} customers`;
+}
+
+document.getElementById('plant-capacity').addEventListener('change', updateMaxCustomers);
+
+// Render MPPB tariff table
+function renderMPPBTable() {
+    const keys = Object.keys(MPPB.TARIFF);
+    const tbody = document.getElementById('mppb-tariff-body');
+    tbody.innerHTML = '';
+    keys.forEach(k => {
+        const parts = k.split('_');
+        const cat = parts[0]+'_'+parts[1];
+        const conn = parts[2];
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100';
+        tr.innerHTML = `<td class="px-3 py-2">${cat}</td><td class="px-3 py-2">${conn}</td><td class="px-3 py-2">${MPPB.TARIFF[k]}</td><td class="px-3 py-2">${MPPB.FIXED[k]}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+renderMPPBTable();
+
+function addCustomerForm() {
+    const cap = parseInt(document.getElementById('plant-capacity').value);
+    const max = Math.max(1, Math.floor(cap/100));
+    if (customers.length >= max) { showToast('Maximum customers reached for this plant capacity'); return; }
+    const id = ++custId;
+    const div = document.createElement('div');
+    div.className = 'bg-white rounded-2xl p-5 border border-gray-200 shadow-sm';
+    div.id = 'cust-'+id;
+    div.innerHTML = `
+        <div class="flex justify-between items-center mb-4">
+            <h4 class="font-semibold text-gray-800">Customer #${id}</h4>
+            <button onclick="removeCustomer(${id})" class="text-red-400 hover:text-red-600 text-sm flex items-center gap-1"><i data-lucide="trash-2" style="width:14px;height:14px"></i> Remove</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <div><label class="block text-xs text-gray-500 mb-1">Name</label><input data-field="name" value="Customer ${id}" class="w-full border rounded-lg px-2 py-1.5"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Monthly Units (kWh)</label><input data-field="units" type="number" value="15000" class="w-full border rounded-lg px-2 py-1.5"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">kV Level</label><select data-field="kv" class="w-full border rounded-lg px-2 py-1.5"><option value="33">33 kV</option><option value="11">11 kV</option></select></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Partner Type</label><select data-field="ptype" class="w-full border rounded-lg px-2 py-1.5"><option value="26">Group Captive (≤26%)</option><option value="50">Third Party</option></select></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Fixed Charge (₹)</label><input data-field="fixed" type="number" value="5000" class="w-full border rounded-lg px-2 py-1.5"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Captive Share %</label><input data-field="captive_pct" type="number" value="26" min="0" max="49" class="w-full border rounded-lg px-2 py-1.5"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Peak Units (5-10PM)</label><input data-field="peak" type="number" value="2000" class="w-full border rounded-lg px-2 py-1.5"></div>
+            <div><label class="block text-xs text-gray-500 mb-1">MPPB Category</label><select data-field="mppb_cat" class="w-full border rounded-lg px-2 py-1.5"><option value="HV_3.1">HV 3.1 - Industrial</option><option value="HV_3.2">HV 3.2 - Non-Industrial</option><option value="LV_4.1">LV 4.1</option></select></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Connection</label><select data-field="mppb_conn" class="w-full border rounded-lg px-2 py-1.5"><option value="33kV">33kV</option><option value="11kV">11kV</option><option value="Rural">Rural</option><option value="Urban">Urban</option></select></div>
+            <div><label class="block text-xs text-gray-500 mb-1">Contract Demand (kVA)</label><input data-field="contract_demand" type="number" value="100" class="w-full border rounded-lg px-2 py-1.5"></div>
+        </div>`;
+    document.getElementById('customers-list').appendChild(div);
+    customers.push(id);
+    updateMaxCustomers();
+    lucide.createIcons();
+}
+
+function removeCustomer(id) {
+    const el = document.getElementById('cust-'+id);
+    if (el) el.remove();
+    customers = customers.filter(c=>c!==id);
+    updateMaxCustomers();
+}
+
+function getCustData(id) {
+    const el = document.getElementById('cust-'+id);
+    const g = f => el.querySelector(`[data-field="${f}"]`).value;
+    return {
+        name: g('name'),
+        monthly_units: parseFloat(g('units'))||0,
+        kv_level: parseInt(g('kv')),
+        partner_type: parseInt(g('ptype')),
+        fixed_charge: parseFloat(g('fixed'))||0,
+        captive_share_pct: parseFloat(g('captive_pct'))||0,
+        peak_units: parseFloat(g('peak'))||0,
+        mppb_cat: g('mppb_cat'),
+        mppb_conn: g('mppb_conn'),
+        contract_demand: parseFloat(g('contract_demand'))||0
+    };
+}
+
+function runSimulation() {
+    if (customers.length === 0) { showToast('Add at least one customer'); return; }
+
+    // Read settings
+    const cap = parseInt(document.getElementById('plant-capacity').value);
+    const projectCost = parseFloat(document.getElementById('project-cost').value)||25000000;
+    const equityPct = (parseFloat(document.getElementById('equity-pct').value)||30)/100;
+    const emi = parseFloat(document.getElementById('emi-input').value)||180000;
+    const om = parseFloat(document.getElementById('om-input').value)||25000;
+    T.PPA_RATE = parseFloat(document.getElementById('ppa-rate').value)||4.50;
+    T.BANK_SETTLEMENT_RATE = parseFloat(document.getElementById('bank-rate').value)||3.50;
+    MPPB.FPPAS_PCT = parseFloat(document.getElementById('fppas-pct').value)||4.5;
+    MPPB.CSS = parseFloat(document.getElementById('css-rate').value)||1.49;
+    MPPB.ADDITIONAL_SURCHARGE = parseFloat(document.getElementById('addsur-rate').value)||1.18;
+    MPPB.TRANSMISSION = parseFloat(document.getElementById('trans-rate').value)||0.46;
+    MPPB.DUTY_PCT = parseInt(document.getElementById('duty-pct').value)||9;
+    const totalCaptivePct = parseFloat(document.getElementById('captive-pct').value)||26;
+
+    const equity = projectCost * equityPct;
+    const generation = getMonthlyGen(cap);
+    const allocLimit = ALLOC_LIMIT[cap];
+
+    // Build partners
+    let partners = customers.map(id => {
+        const d = getCustData(id);
+        const isCaptive = d.captive_share_pct >= 26 && d.captive_share_pct <= 49;
+        return {...d, is_captive: isCaptive, is_mock: false, monthly_records: [], annual: {solar_units:0,gov_units:0,revenue:0,expense_share:0,profit:0,solbill:0,govbill:0,ogbill:0}};
+    });
+
+    // Mock customer
+    const realTotal = partners.reduce((s,p)=>s+p.monthly_units,0);
+    if (realTotal < allocLimit) {
+        partners.push({
+            name:'Mock Customer / Unallocated',monthly_units:allocLimit-realTotal,
+            kv_level:33,partner_type:50,fixed_charge:0,captive_share_pct:0,peak_units:0,
+            is_captive:false,is_mock:true,monthly_records:[],
+            annual:{solar_units:0,gov_units:0,revenue:0,expense_share:0,profit:0,solbill:0,govbill:0,ogbill:0},
+            mppb_cat:'HV_3.1',mppb_conn:'33kV',contract_demand:0
+        });
+    }
+
+    const totalCon = partners.reduce((s,p)=>s+p.monthly_units,0);
+    let bank = 0;
+    let annualPlant = {gross_gen:0,net_gen:0,solar_units:0,gov_units:0,revenue:0,banked_units:0};
+
+    // Run month by month
+    for (let m=0; m<12; m++) {
+        const gross = generation[m];
+        const net = gross * (1 - T.MPEB_DEDUCTION);
+        let banked=0, govUnits=0, totalSolar=0;
+
+        if (net >= totalCon) {
+            const surplus = net - totalCon;
+            banked = surplus * T.BANK_WITHDRAWAL_FACTOR;
+            bank += banked;
+            totalSolar = totalCon;
+        } else {
+            const deficit = totalCon - net;
+            if (bank >= deficit) { bank -= deficit; totalSolar = totalCon; }
+            else { govUnits = deficit - bank; bank = 0; totalSolar = totalCon - govUnits; }
+        }
+        bank = Math.max(0, bank);
+
+        const monthRevenue = totalSolar * T.PPA_RATE;
+        annualPlant.gross_gen += gross;
+        annualPlant.net_gen += net;
+        annualPlant.solar_units += totalSolar;
+        annualPlant.gov_units += govUnits;
+        annualPlant.revenue += monthRevenue;
+        annualPlant.banked_units += banked;
+
+        for (const p of partners) {
+            const share = p.monthly_units / totalCon;
+            const govP = govUnits * share;
+            const solarP = p.monthly_units - govP;
+            const emiShare = emi * share;
+            const omShare = om * share;
+            const expShare = emiShare + omShare;
+            const revP = solarP * T.PPA_RATE;
+            const profitP = revP - expShare;
+
+            // Billing
+            const solRate = p.kv_level===33?(p.is_captive?T.SOLCHR_33KV_CAPTIVE:T.SOLCHR_33KV_NORMAL):(p.is_captive?T.SOLCHR_11KV_CAPTIVE:T.SOLCHR_11KV_NORMAL);
+            const solbill = solarP*(T.PPA_RATE+solRate)+p.fixed_charge;
+            const peakRate = p.kv_level===33?T.PEAK_RATE_33KV:T.PEAK_RATE_11KV;
+            const govbill = govP*T.GOV_PPA_RATE + p.peak_units*peakRate;
+            const ogbill = p.monthly_units*T.GOV_OG_RATE + p.peak_units*peakRate + p.fixed_charge;
+            const saving = ogbill===0?0:1-((solbill+govbill)/ogbill);
+
+            const rec = {month:MONTHS[m],solar_units:solarP,gov_units:govP,revenue:revP,expense_share:expShare,profit:profitP,solbill,govbill,ogbill,saving};
+            p.monthly_records.push(rec);
+            p.annual.solar_units+=solarP; p.annual.gov_units+=govP; p.annual.revenue+=revP;
+            p.annual.expense_share+=expShare; p.annual.profit+=profitP;
+            p.annual.solbill+=solbill; p.annual.govbill+=govbill; p.annual.ogbill+=ogbill;
+        }
+    }
+
+    // Project summary
+    const totalEmi=emi*12, totalOm=om*12, totalExp=totalEmi+totalOm;
+    const bankRevenue = bank * T.BANK_SETTLEMENT_RATE;
+    const totalRevenue = annualPlant.revenue + bankRevenue;
+    const totalProfit = totalRevenue - totalExp;
+    const roi = equity>0?(totalProfit/equity*100):0;
+    const payback = totalProfit>0?(equity/totalProfit):Infinity;
+
+    // Render
+    document.getElementById('val-generation').textContent = fmt(annualPlant.gross_gen)+' kWh';
+    document.getElementById('val-revenue').textContent = '₹'+fmt(totalRevenue);
+    document.getElementById('val-profit').textContent = '₹'+fmt(totalProfit);
+    document.getElementById('val-roi').textContent = roi.toFixed(1)+'%';
+    document.getElementById('val-payback').textContent = payback===Infinity?'∞':payback.toFixed(1)+' yrs';
+
+    // Annual table
+    const abody = document.getElementById('annual-summary-body');
+    abody.innerHTML = '';
+    partners.forEach(p => {
+        const avgSav = p.annual.ogbill?((1-(p.annual.solbill+p.annual.govbill)/p.annual.ogbill)*100):0;
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100'+(p.is_mock?' opacity-50':'');
+        tr.innerHTML = `<td class="px-4 py-2 font-medium">${p.name}${p.is_mock?' 🔸':''}</td><td class="px-4 py-2 text-right">${fmt(p.annual.solar_units)}</td><td class="px-4 py-2 text-right">${fmt(p.annual.gov_units)}</td><td class="px-4 py-2 text-right">₹${fmt(p.annual.revenue)}</td><td class="px-4 py-2 text-right">₹${fmt(p.annual.expense_share)}</td><td class="px-4 py-2 text-right font-semibold" style="color:${p.annual.profit>=0?'#059669':'#dc2626'}">₹${fmt(p.annual.profit)}</td><td class="px-4 py-2 text-right">${avgSav.toFixed(1)}%</td>`;
+        abody.appendChild(tr);
+    });
+
+    // MPPB Billing
+    const mppbCont = document.getElementById('mppb-billing-container');
+    mppbCont.innerHTML = '';
+    partners.filter(p=>!p.is_mock).forEach(p => {
+        const avgSolarUnits = p.annual.solar_units/12;
+        const avgGovUnits = p.annual.gov_units/12;
+        const kvKey = p.kv_level+'kV';
+        const wheeling = MPPB.WHEELING[kvKey]||0.17;
+        const css = p.is_captive?0:MPPB.CSS;
+        const addSur = p.is_captive?0:MPPB.ADDITIONAL_SURCHARGE;
+        const landingTariff = T.PPA_RATE + wheeling + MPPB.TRANSMISSION + css + addSur;
+        const mppbKey = p.mppb_cat+'_'+p.mppb_conn;
+        const mppbTariff = MPPB.TARIFF[mppbKey]||6.34;
+        const fixedRate = MPPB.FIXED[mppbKey]||430;
+
+        const solarBillTotal = avgSolarUnits*landingTariff + avgSolarUnits*T.PPA_RATE*(MPPB.DUTY_PCT/100);
+        const mppbEnergy = avgGovUnits*mppbTariff;
+        const fppas = mppbEnergy*(MPPB.FPPAS_PCT/100);
+        const mppbDuty = avgGovUnits*mppbTariff*(MPPB.DUTY_PCT/100);
+        const fixedCharge = p.contract_demand*fixedRate;
+        const mppbBillTotal = mppbEnergy+fppas+mppbDuty+fixedCharge;
+        const combined = solarBillTotal+mppbBillTotal;
+        const origBill = p.monthly_units*mppbTariff + p.monthly_units*mppbTariff*(MPPB.DUTY_PCT/100) + fppas + fixedCharge;
+        const savingAmt = origBill - combined;
+        const savingPct = origBill>0?(savingAmt/origBill*100):0;
+
+        const card = document.createElement('div');
+        card.className = 'bg-white border border-gray-200 rounded-xl p-4';
+        card.innerHTML = `<h4 class="font-semibold text-gray-800 mb-3">${p.name}</h4>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div><span class="text-xs text-gray-500">Landing Tariff</span><p class="font-semibold">₹${landingTariff.toFixed(2)}/unit</p></div>
+                <div><span class="text-xs text-gray-500">Solar Bill (avg/mo)</span><p class="font-semibold">₹${fmt(solarBillTotal)}</p></div>
+                <div><span class="text-xs text-gray-500">MPPB Bill (avg/mo)</span><p class="font-semibold">₹${fmt(mppbBillTotal)}</p></div>
+                <div><span class="text-xs text-gray-500">Combined</span><p class="font-semibold">₹${fmt(combined)}</p></div>
+                <div><span class="text-xs text-gray-500">Original Bill</span><p class="font-semibold">₹${fmt(origBill)}</p></div>
+                <div><span class="text-xs text-gray-500">Saving</span><p class="font-semibold" style="color:#059669">₹${fmt(savingAmt)} (${savingPct.toFixed(1)}%)</p></div>
+                <div><span class="text-xs text-gray-500">Captive?</span><p class="font-semibold">${p.is_captive?'Yes ✓':'No'}</p></div>
+                <div><span class="text-xs text-gray-500">Category</span><p class="font-semibold">${p.mppb_cat} / ${p.mppb_conn}</p></div>
+            </div>`;
+        mppbCont.appendChild(card);
+    });
+
+    // Captive funding
+    const cbody = document.getElementById('captive-body');
+    cbody.innerHTML = '';
+    partners.forEach(p => {
+        const unitRatio = totalCon>0?(p.monthly_units/totalCon):0;
+        const eqPct = totalCaptivePct * unitRatio;
+        const funding = equity * (eqPct/100);
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100'+(p.is_mock?' opacity-50':'');
+        tr.innerHTML = `<td class="px-4 py-2">${p.name}${p.is_mock?' 🔸':''}</td><td class="px-4 py-2 text-right">${fmt(p.monthly_units)}</td><td class="px-4 py-2 text-right">${(unitRatio*100).toFixed(1)}%</td><td class="px-4 py-2 text-right">${eqPct.toFixed(2)}%</td><td class="px-4 py-2 text-right">₹${fmt(funding)}</td>`;
+        cbody.appendChild(tr);
+    });
+
+    // Monthly detail
+    const mdCont = document.getElementById('monthly-detail-container');
+    mdCont.innerHTML = '';
+    partners.filter(p=>!p.is_mock).forEach(p => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'bg-white border border-gray-200 rounded-xl overflow-hidden';
+        let rows = '';
+        p.monthly_records.forEach(r => {
+            rows += `<tr class="border-b border-gray-50 text-xs"><td class="px-3 py-1.5">${r.month}</td><td class="px-3 py-1.5 text-right">${fmt(r.solar_units)}</td><td class="px-3 py-1.5 text-right">${fmt(r.gov_units)}</td><td class="px-3 py-1.5 text-right">₹${fmt(r.solbill)}</td><td class="px-3 py-1.5 text-right">₹${fmt(r.govbill)}</td><td class="px-3 py-1.5 text-right">₹${fmt(r.ogbill)}</td><td class="px-3 py-1.5 text-right">${(r.saving*100).toFixed(1)}%</td></tr>`;
+        });
+        wrapper.innerHTML = `<button class="w-full text-left px-4 py-3 font-semibold text-gray-800 flex justify-between items-center hover:bg-gray-50" onclick="this.nextElementSibling.classList.toggle('open')"><span>${p.name}</span><i data-lucide="chevron-down" style="width:16px;height:16px"></i></button>
+            <div class="collapse-content"><table class="w-full text-sm"><thead><tr class="bg-gray-50 border-b"><th class="px-3 py-2 text-left text-xs">Month</th><th class="px-3 py-2 text-right text-xs">Solar</th><th class="px-3 py-2 text-right text-xs">Gov</th><th class="px-3 py-2 text-right text-xs">Sol Bill</th><th class="px-3 py-2 text-right text-xs">Gov Bill</th><th class="px-3 py-2 text-right text-xs">OG Bill</th><th class="px-3 py-2 text-right text-xs">Saving</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        mdCont.appendChild(wrapper);
+    });
+    lucide.createIcons();
+
+    // Show results tab
+    document.getElementById('no-results').classList.add('hidden');
+    document.getElementById('results-content').classList.remove('hidden');
+    switchTab('results');
+}
+
+function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
+
+function showToast(msg) {
+    const t = document.createElement('div');
+    t.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-xl text-sm z-50';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 3000);
+}
+
+// Tabs
+function switchTab(name) {
+    document.querySelectorAll('[id^="tab-"]').forEach(s=>s.classList.add('hidden'));
+    document.getElementById('tab-'+name).classList.remove('hidden');
+    document.querySelectorAll('.tab-btn').forEach(b=>{b.classList.remove('tab-active');b.classList.add('text-gray-500')});
+    document.querySelector(`[data-tab="${name}"]`).classList.add('tab-active');
+    document.querySelector(`[data-tab="${name}"]`).classList.remove('text-gray-500');
+}
+document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+
+updateMaxCustomers();
+</script>
+ </body>
+</html>
