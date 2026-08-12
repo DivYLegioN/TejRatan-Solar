@@ -38,7 +38,7 @@ legend{font-weight:700;padding:0 6px}
 <body>
 <header>
   <h1>☀️ Tejratna Solar Open Access Calculator</h1>
-  <p>Solar PPA • MPPB Billing • Open Access • Captive / Group Captive</p>
+  <p>Solar PPA • MPPB Billing • Open Access • Captive / Group Captive</p><div class="small" style="color:#d9f4e3">Frontend build: 2026-08-13-v3</div>
 </header>
 
 <main>
@@ -258,21 +258,21 @@ legend{font-weight:700;padding:0 6px}
 
   async function calculate(){
     const body = {
-      category:String($("category").value),
-      connection:String($("connection").value),
+      consumer_category_code:String($("category").value),
+      customer_connection_code:String($("connection").value),
       contract_demand:Number($("contract_demand").value),
       solar_units:Number($("solar_units").value),
       gov_units:Number($("gov_units").value),
       extra_charges:Number($("extra_charges").value),
       ppa_tariff:Number($("ppa_tariff").value),
-      duty_pct:Number($("duty").value),
+      electricity_duty_pct_input:Number($("duty").value),
       fppas_pct:Number($("fppas").value),
       is_captive:$("captive").value === "true"
     };
 
     $("resultMessage").textContent = "Calculating...";
     try{
-      const r = await fetch("/api/calculate-billing",{
+      const r = await fetch("/api/v2/calculate-billing",{
         method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
       });
       const d = await r.json();
