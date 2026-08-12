@@ -36,23 +36,23 @@ table{width:100%;border-collapse:collapse;margin-top:10px}td{padding:9px;border-
 </select>
 <label>Connection</label><select id="connection"></select>
 <div class="row">
-<div><label>Contract Demand (kVA)</label><input id="contract_demand" type="number" value="500"></div>
-<div><label>Solar Units</label><input id="solar_units" type="number" value="50000"></div>
+<div><label>Contract Demand <span class="small">(kVA)</span></label><input id="contract_demand" type="number" value="500"></div>
+<div><label>Solar Units <span class="small">(units/month)</span></label><input id="solar_units" type="number" value="50000"></div>
 </div>
 <div class="row">
-<div><label>Government Peak Units (5–10 PM)</label><input id="gov_units" type="number" value="10000"></div>
-<div><label>Extra Charges</label><input id="extra_charges" type="number" value="0"></div>
+<div><label>Government Peak Units (5–10 PM) <span class="small">(units/month)</span></label><input id="gov_units" type="number" value="10000"></div>
+<div><label>Extra Charges <span class="small">(₹/month)</span></label><input id="extra_charges" type="number" value="0"></div>
 </div>
 </section>
 
 <section class="card">
 <h2>Solar PPA & Open Access</h2>
 <div class="row">
-<div><label>Solar PPA Tariff (₹/unit)</label><input id="ppa_tariff" type="number" step="0.01" value="4.50"></div>
-<div><label>Electricity Duty (%)</label><select id="duty"><option>9</option><option>10</option><option>11</option><option selected>12</option></select></div>
+<div><label>Solar PPA Tariff <span class="small">(₹/unit)</span></label><input id="ppa_tariff" type="number" step="0.01" value="4.50"></div>
+<div><label>Electricity Duty <span class="small">(%)</span></label><select id="duty"><option>9</option><option>10</option><option>11</option><option selected>12</option></select></div>
 </div>
 <div class="row">
-<div><label>FPPAS (%) — Govt/OG only</label><input id="fppas" type="number" step="0.01" value="4.5"></div>
+<div><label>FPPAS — Govt/OG only <span class="small">(%)</span></label><input id="fppas" type="number" step="0.01" value="4.5"></div>
 <div><label>Captive / Group Captive</label><select id="captive"><option value="false">No</option><option value="true">Yes — CSS & AS = 0</option></select></div>
 </div>
 <p class="small">Landing price = PPA + Wheeling + Transmission + CSS + Additional Surcharge. FPPAS does not apply to solar units.</p>
@@ -99,12 +99,38 @@ async function toggleSettings(){
   const el=document.getElementById("settings"); el.classList.toggle("hidden");
   if(!el.classList.contains("hidden")) await loadSettings();
 }
+const settingUnits = {
+  HV_3.1_11kV_tariff: "₹/unit",
+  HV_3.1_33kV_tariff: "₹/unit",
+  HV_3.2_11kV_tariff: "₹/unit",
+  HV_3.2_33kV_tariff: "₹/unit",
+  LV_4.1_Rural_tariff: "₹/unit",
+  LV_4.1_Urban_tariff: "₹/unit",
+  HV_3.1_11kV_fixed: "₹/kVA/month",
+  HV_3.1_33kV_fixed: "₹/kVA/month",
+  HV_3.2_11kV_fixed: "₹/kVA/month",
+  HV_3.2_33kV_fixed: "₹/kVA/month",
+  LV_4.1_Rural_fixed: "₹/kVA/month",
+  LV_4.1_Urban_fixed: "₹/kVA/month",
+  wheeling_11kV: "₹/unit",
+  wheeling_33kV: "₹/unit",
+  transmission: "₹/unit",
+  css: "₹/unit",
+  additional_surcharge: "₹/unit",
+  fppas_pct: "%",
+  electricity_duty_pct: "%"
+};
+
 async function loadSettings(){
   const r=await fetch("/api/settings"); settings=await r.json();
   const f=document.getElementById("settingsFields");
-  f.innerHTML=Object.entries(settings).map(([k,v])=>`
-    <div><label>${k.replaceAll("_"," ")}</label>
-    <input data-key="${k}" type="number" step="0.01" value="${v}"></div>`).join("");
+  f.innerHTML=Object.entries(settings).map(([k,v])=>{
+    const unit=settingUnits[k] || "";
+    return `<div>
+      <label>${k.replaceAll("_"," ")} <span class="small">(${unit})</span></label>
+      <input data-key="${k}" type="number" step="0.01" value="${v}">
+    </div>`;
+  }).join("");
 }
 async function saveSettings(){
   const body={};
@@ -114,9 +140,11 @@ async function saveSettings(){
   await loadSettings();
 }
 async function calculate(){
+  const categoryValue = String(document.getElementById("category").value).trim();
+  const connectionValue = String(document.getElementById("connection").value).trim();
   const body={
-    category:document.getElementById("category").value,
-    connection:document.getElementById("connection").value,
+    category:categoryValue,
+    connection:connectionValue,
     contract_demand:Number(document.getElementById("contract_demand").value),
     solar_units:Number(document.getElementById("solar_units").value),
     gov_units:Number(document.getElementById("gov_units").value),
