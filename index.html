@@ -3,176 +3,318 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tejratna Solar Billing</title>
+<title>Tejratna Solar Calculator</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#f4f8f5;color:#17351f}
-header{background:linear-gradient(135deg,#0b5d2a,#159447);color:white;padding:22px 18px}
-header h1{margin:0;font-size:25px}header p{margin:5px 0 0;opacity:.9}
-main{max-width:1100px;margin:auto;padding:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.card{background:white;border-radius:16px;padding:18px;box-shadow:0 4px 18px #17351f18}
-h2{font-size:18px;margin:0 0 14px}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-label{font-size:13px;font-weight:700;display:block;margin:8px 0 5px}
-input,select{width:100%;padding:11px;border:1px solid #cbd9ce;border-radius:9px;font-size:15px}
-button{border:0;border-radius:10px;padding:12px 18px;font-weight:700;cursor:pointer}
-.primary{background:#0b7a35;color:#fff}.secondary{background:#e8f3eb;color:#155b2c}
-.actions{margin:16px 0;display:flex;gap:10px;flex-wrap:wrap}
-.results{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.metric{padding:14px;border-radius:12px;background:#f1f8f2}.metric b{display:block;font-size:20px;margin-top:5px}
-table{width:100%;border-collapse:collapse;margin-top:10px}td{padding:9px;border-bottom:1px solid #e5eee7}.right{text-align:right}
-.small{font-size:12px;color:#607267}.hidden{display:none}.success{color:#08752e;font-weight:700}.error{color:#b42318;font-weight:700}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f4f7f4;color:#17351f}
+header{background:#0a6b32;color:#fff;padding:20px}
+header h1{margin:0 0 4px;font-size:24px}
+header p{margin:0;opacity:.9}
+main{max-width:1100px;margin:auto;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:#fff;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 3px 14px rgba(0,0,0,.08)}
+h2{font-size:18px;margin:0 0 14px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:block;font-size:13px;font-weight:700;margin:9px 0 5px}
+input,select{width:100%;padding:11px;border:1px solid #ccd8cf;border-radius:8px;background:#fff;font-size:15px}
+button{border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer}
+.primary{background:#087b38;color:#fff}.secondary{background:#e6f2e9;color:#135b2c}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.hidden{display:none!important}
+.small{font-size:12px;color:#617166;font-weight:400}
+.message{margin-top:10px;font-size:13px}
+.error{color:#b42318}.success{color:#087b38}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.metric{background:#eef7f0;border-radius:10px;padding:13px}
+.metric span{font-size:12px;color:#617166}.metric strong{display:block;font-size:20px;margin-top:5px}
+table{width:100%;border-collapse:collapse;margin-top:14px}
+td{padding:8px;border-bottom:1px solid #e7ece8}.right{text-align:right}
+hr{border:0;border-top:1px solid #e6ece8;margin:16px 0}
+fieldset{border:1px solid #d9e4dc;border-radius:10px;padding:12px;margin-bottom:14px}
+legend{font-weight:700;padding:0 6px}
+@media(max-width:600px){.row{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}header h1{font-size:21px}}
 </style>
 </head>
 <body>
-<header><h1>☀️ Tejratna Solar Open Access Calculator</h1><p>Solar PPA • MPPB billing • Open Access • Captive / Group Captive</p></header>
-<main>
-<div class="grid">
-<section class="card">
-<h2>Customer & MPPB</h2>
-<label>Consumer Category</label>
-<select id="category" onchange="loadConnections()">
-<option value="HV_3.1">HV 3.1 — Industrial</option>
-<option value="HV_3.2">HV 3.2 — Non-Industrial</option>
-<option value="LV_4.1">LV 4.1</option>
-</select>
-<label>Connection</label><select id="connection"></select>
-<div class="row">
-<div><label>Contract Demand <span class="small">(kVA)</span></label><input id="contract_demand" type="number" value="500"></div>
-<div><label>Solar Units <span class="small">(units/month)</span></label><input id="solar_units" type="number" value="50000"></div>
-</div>
-<div class="row">
-<div><label>Government Peak Units (5–10 PM) <span class="small">(units/month)</span></label><input id="gov_units" type="number" value="10000"></div>
-<div><label>Extra Charges <span class="small">(₹/month)</span></label><input id="extra_charges" type="number" value="0"></div>
-</div>
-</section>
+<header>
+  <h1>☀️ Tejratna Solar Open Access Calculator</h1>
+  <p>Solar PPA • MPPB Billing • Open Access • Captive / Group Captive</p>
+</header>
 
-<section class="card">
-<h2>Solar PPA & Open Access</h2>
-<div class="row">
-<div><label>Solar PPA Tariff <span class="small">(₹/unit)</span></label><input id="ppa_tariff" type="number" step="0.01" value="4.50"></div>
-<div><label>Electricity Duty <span class="small">(%)</span></label><select id="duty"><option>9</option><option>10</option><option>11</option><option selected>12</option></select></div>
-</div>
-<div class="row">
-<div><label>FPPAS — Govt/OG only <span class="small">(%)</span></label><input id="fppas" type="number" step="0.01" value="4.5"></div>
-<div><label>Captive / Group Captive</label><select id="captive"><option value="false">No</option><option value="true">Yes — CSS & AS = 0</option></select></div>
-</div>
-<p class="small">Landing price = PPA + Wheeling + Transmission + CSS + Additional Surcharge. FPPAS does not apply to solar units.</p>
+<main>
+<section class="grid">
+  <div class="card">
+    <h2>Customer & MPPB</h2>
+
+    <label>Consumer Category</label>
+    <select id="category">
+      <option value="HV_3.1">HV 3.1 — Industrial</option>
+      <option value="HV_3.2">HV 3.2 — Non-Industrial</option>
+      <option value="LV_4.1">LV 4.1</option>
+    </select>
+
+    <label>Connection / Area</label>
+    <select id="connection"></select>
+
+    <div class="row">
+      <div>
+        <label>Contract Demand <span class="small">(kVA)</span></label>
+        <input id="contract_demand" type="number" min="0" step="0.01" value="500">
+      </div>
+      <div>
+        <label>Solar Units <span class="small">(units/month)</span></label>
+        <input id="solar_units" type="number" min="0" step="0.01" value="50000">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Government Peak Units <span class="small">(5 PM–10 PM, units/month)</span></label>
+        <input id="gov_units" type="number" min="0" step="0.01" value="10000">
+      </div>
+      <div>
+        <label>Extra Charges <span class="small">(₹/month)</span></label>
+        <input id="extra_charges" type="number" min="0" step="0.01" value="0">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Solar PPA & Open Access</h2>
+
+    <div class="row">
+      <div>
+        <label>Solar PPA Tariff <span class="small">(₹/unit)</span></label>
+        <input id="ppa_tariff" type="number" min="0" step="0.01" value="4.50">
+      </div>
+      <div>
+        <label>Electricity Duty <span class="small">(%)</span></label>
+        <select id="duty">
+          <option value="9">9%</option>
+          <option value="10">10%</option>
+          <option value="11">11%</option>
+          <option value="12" selected>12%</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>FPPAS <span class="small">(%, Government/OG only)</span></label>
+        <input id="fppas" type="number" min="0" step="0.01" value="4.5">
+      </div>
+      <div>
+        <label>Captive / Group Captive</label>
+        <select id="captive">
+          <option value="false">No — Third Party</option>
+          <option value="true">Yes — CSS & AS = 0</option>
+        </select>
+      </div>
+    </div>
+
+    <p class="small">
+      Landing Price = PPA + Wheeling + Transmission + CSS + Additional Surcharge.
+      FPPAS applies only to Government/OG billing.
+    </p>
+  </div>
 </section>
-</div>
 
 <div class="actions">
-<button class="primary" onclick="calculate()">Calculate Billing</button>
-<button class="secondary" onclick="toggleSettings()">⚙ Settings</button>
+  <button type="button" class="primary" id="calculateBtn">Calculate Billing</button>
+  <button type="button" class="secondary" id="settingsBtn">⚙ Settings</button>
 </div>
 
-<section id="settings" class="card hidden">
-<h2>Editable Tariff Settings</h2>
-<p class="small">These values are sent to the Python backend. Calculation logic remains in solar_core.py.</p>
-<div id="settingsFields" class="grid"></div>
-<button class="primary" onclick="saveSettings()">Save Settings</button>
-<span id="settingsMsg" class="small"></span>
+<section id="settingsPanel" class="card hidden">
+  <h2>Tariff & Charge Settings</h2>
+  <p class="small">Edit values only. Units/basis are shown next to every value.</p>
+  <div id="settingsFields" class="grid"></div>
+  <div class="actions">
+    <button type="button" class="primary" id="saveSettingsBtn">Save Settings</button>
+    <button type="button" class="secondary" id="closeSettingsBtn">Close</button>
+  </div>
+  <div id="settingsMessage" class="message"></div>
 </section>
 
-<section id="output" class="card hidden">
-<h2>Billing Result</h2>
-<div class="results">
-<div class="metric">Solar Bill <b id="solarTotal">₹0</b></div>
-<div class="metric">Government Bill <b id="govTotal">₹0</b></div>
-<div class="metric">OG Bill <b id="ogTotal">₹0</b></div>
-<div class="metric">Final Customer Bill <b id="finalTotal">₹0</b></div>
-<div class="metric">Saving <b id="saving">0%</b></div>
-<div class="metric">Landing Price <b id="landing">₹0/unit</b></div>
-</div>
-<table id="breakdown"></table>
+<section id="outputPanel" class="card hidden">
+  <h2>Billing Result</h2>
+  <div class="metrics">
+    <div class="metric"><span>Solar Bill</span><strong id="solarTotal">₹0</strong></div>
+    <div class="metric"><span>Government Bill</span><strong id="govTotal">₹0</strong></div>
+    <div class="metric"><span>OG Bill</span><strong id="ogTotal">₹0</strong></div>
+    <div class="metric"><span>Final Customer Bill</span><strong id="finalTotal">₹0</strong></div>
+    <div class="metric"><span>Saving</span><strong id="saving">0%</strong></div>
+    <div class="metric"><span>Landing Price</span><strong id="landing">₹0/unit</strong></div>
+  </div>
+  <table id="breakdown"></table>
+  <div id="resultMessage" class="message"></div>
 </section>
 </main>
 
 <script>
-const money=x=>"₹"+Number(x||0).toLocaleString("en-IN",{maximumFractionDigits:2});
-let settings={};
+(function(){
+  "use strict";
 
-async function loadConnections(){
-  const r=await fetch("/api/connections?category="+encodeURIComponent(document.getElementById("category").value));
-  const d=await r.json(); const s=document.getElementById("connection");
-  s.innerHTML=d.connections.map(x=>`<option value="${x}">${x}</option>`).join("");
-}
-async function toggleSettings(){
-  const el=document.getElementById("settings"); el.classList.toggle("hidden");
-  if(!el.classList.contains("hidden")) await loadSettings();
-}
-const settingUnits = {
-  HV_3.1_11kV_tariff: "₹/unit",
-  HV_3.1_33kV_tariff: "₹/unit",
-  HV_3.2_11kV_tariff: "₹/unit",
-  HV_3.2_33kV_tariff: "₹/unit",
-  LV_4.1_Rural_tariff: "₹/unit",
-  LV_4.1_Urban_tariff: "₹/unit",
-  HV_3.1_11kV_fixed: "₹/kVA/month",
-  HV_3.1_33kV_fixed: "₹/kVA/month",
-  HV_3.2_11kV_fixed: "₹/kVA/month",
-  HV_3.2_33kV_fixed: "₹/kVA/month",
-  LV_4.1_Rural_fixed: "₹/kVA/month",
-  LV_4.1_Urban_fixed: "₹/kVA/month",
-  wheeling_11kV: "₹/unit",
-  wheeling_33kV: "₹/unit",
-  transmission: "₹/unit",
-  css: "₹/unit",
-  additional_surcharge: "₹/unit",
-  fppas_pct: "%",
-  electricity_duty_pct: "%"
-};
-
-async function loadSettings(){
-  const r=await fetch("/api/settings"); settings=await r.json();
-  const f=document.getElementById("settingsFields");
-  f.innerHTML=Object.entries(settings).map(([k,v])=>{
-    const unit=settingUnits[k] || "";
-    return `<div>
-      <label>${k.replaceAll("_"," ")} <span class="small">(${unit})</span></label>
-      <input data-key="${k}" type="number" step="0.01" value="${v}">
-    </div>`;
-  }).join("");
-}
-async function saveSettings(){
-  const body={};
-  document.querySelectorAll("#settingsFields input").forEach(i=>body[i.dataset.key]=Number(i.value));
-  const r=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  const d=await r.json(); document.getElementById("settingsMsg").textContent=d.message||"Saved";
-  await loadSettings();
-}
-async function calculate(){
-  const categoryValue = String(document.getElementById("category").value).trim();
-  const connectionValue = String(document.getElementById("connection").value).trim();
-  const body={
-    category:categoryValue,
-    connection:connectionValue,
-    contract_demand:Number(document.getElementById("contract_demand").value),
-    solar_units:Number(document.getElementById("solar_units").value),
-    gov_units:Number(document.getElementById("gov_units").value),
-    extra_charges:Number(document.getElementById("extra_charges").value),
-    ppa_tariff:Number(document.getElementById("ppa_tariff").value),
-    duty_pct:Number(document.getElementById("duty").value),
-    fppas_pct:Number(document.getElementById("fppas").value),
-    is_captive:document.getElementById("captive").value==="true"
+  const connectionMap = {
+    "HV_3.1": ["11kV","33kV"],
+    "HV_3.2": ["11kV","33kV"],
+    "LV_4.1": ["Rural","Urban"]
   };
-  const r=await fetch("/api/calculate-billing",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  const d=await r.json();
-  if(!r.ok){alert(d.error||"Calculation error");return}
-  document.getElementById("output").classList.remove("hidden");
-  document.getElementById("solarTotal").textContent=money(d.solar.total_solar_bill);
-  document.getElementById("govTotal").textContent=money(d.government.total_mppb_bill);
-  document.getElementById("ogTotal").textContent=money(d.og.total_mppb_bill);
-  document.getElementById("finalTotal").textContent=money(d.final_customer_bill);
-  document.getElementById("saving").textContent=d.saving_pct.toFixed(2)+"%";
-  document.getElementById("landing").textContent=money(d.solar.landing_tariff_per_unit)+"/unit";
-  document.getElementById("breakdown").innerHTML=`
-  <tr><td>MPPB Tariff</td><td class="right">${money(d.government.mppb_tariff)}/unit</td></tr>
-  <tr><td>Fixed Charge</td><td class="right">${money(d.government.fixed_charge)}</td></tr>
-  <tr><td>FPPAS</td><td class="right">${money(d.government.fppas)}</td></tr>
-  <tr><td>Government Electricity Duty</td><td class="right">${money(d.government.mppb_electricity_duty)}</td></tr>
-  <tr><td>Solar Landing Price</td><td class="right">${money(d.solar.landing_tariff_per_unit)}/unit</td></tr>
-  <tr><td>Solar Electricity Duty</td><td class="right">${money(d.solar.solar_electricity_duty)}</td></tr>`;
-}
-loadConnections();
+
+  const settingUnits = {
+    HV_3_1_11kV_tariff:"₹/unit", HV_3_1_33kV_tariff:"₹/unit",
+    HV_3_2_11kV_tariff:"₹/unit", HV_3_2_33kV_tariff:"₹/unit",
+    LV_4_1_Rural_tariff:"₹/unit", LV_4_1_Urban_tariff:"₹/unit",
+    HV_3_1_11kV_fixed:"₹/kVA/month", HV_3_1_33kV_fixed:"₹/kVA/month",
+    HV_3_2_11kV_fixed:"₹/kVA/month", HV_3_2_33kV_fixed:"₹/kVA/month",
+    LV_4_1_Rural_fixed:"₹/kVA/month", LV_4_1_Urban_fixed:"₹/kVA/month",
+    wheeling_11kV:"₹/unit", wheeling_33kV:"₹/unit",
+    transmission:"₹/unit", css:"₹/unit", additional_surcharge:"₹/unit",
+    fppas_pct:"%", electricity_duty_pct:"%"
+  };
+
+  const fallbackSettings = {
+    HV_3_1_11kV_tariff:6.34, HV_3_1_33kV_tariff:6.14,
+    HV_3_2_11kV_tariff:6.70, HV_3_2_33kV_tariff:6.50,
+    LV_4_1_Rural_tariff:7.05, LV_4_1_Urban_tariff:7.15,
+    HV_3_1_11kV_fixed:430, HV_3_1_33kV_fixed:389,
+    HV_3_2_11kV_fixed:510, HV_3_2_33kV_fixed:480,
+    LV_4_1_Rural_fixed:245, LV_4_1_Urban_fixed:320,
+    wheeling_11kV:0.69, wheeling_33kV:0.17,
+    transmission:0.46, css:1.49, additional_surcharge:1.18,
+    fppas_pct:4.5, electricity_duty_pct:9
+  };
+
+  const $ = id => document.getElementById(id);
+  const money = x => "₹" + Number(x || 0).toLocaleString("en-IN",{maximumFractionDigits:2});
+
+  function setConnections(){
+    const category = String($("category").value);
+    const options = connectionMap[category] || [];
+    $("connection").innerHTML = "";
+    options.forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      $("connection").appendChild(opt);
+    });
+  }
+
+  function renderSettings(data){
+    const merged = Object.assign({}, fallbackSettings, data || {});
+    $("settingsFields").innerHTML = "";
+    Object.keys(fallbackSettings).forEach(key => {
+      const wrap = document.createElement("div");
+      const label = document.createElement("label");
+      label.textContent = key.replaceAll("_"," ");
+      const unit = document.createElement("span");
+      unit.className = "small";
+      unit.textContent = " (" + (settingUnits[key] || "") + ")";
+      label.appendChild(unit);
+      const input = document.createElement("input");
+      input.type = "number"; input.step = "0.01"; input.dataset.key = key;
+      input.value = merged[key];
+      wrap.appendChild(label); wrap.appendChild(input);
+      $("settingsFields").appendChild(wrap);
+    });
+  }
+
+  async function openSettings(){
+    $("settingsPanel").classList.remove("hidden");
+    $("settingsMessage").textContent = "Loading settings...";
+    try{
+      const r = await fetch("/api/settings",{cache:"no-store"});
+      if(!r.ok) throw new Error("Settings API returned HTTP " + r.status);
+      const data = await r.json();
+      renderSettings(data);
+      $("settingsMessage").textContent = "Settings loaded.";
+      $("settingsMessage").className = "message success";
+    }catch(err){
+      renderSettings({});
+      $("settingsMessage").textContent = "Backend settings could not be loaded. Showing current default values.";
+      $("settingsMessage").className = "message error";
+    }
+  }
+
+  function closeSettings(){
+    $("settingsPanel").classList.add("hidden");
+  }
+
+  async function saveSettings(){
+    const body = {};
+    document.querySelectorAll("#settingsFields input").forEach(i => body[i.dataset.key] = Number(i.value));
+    $("settingsMessage").textContent = "Saving...";
+    try{
+      const r = await fetch("/api/settings",{
+        method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.error || "HTTP " + r.status);
+      $("settingsMessage").textContent = data.message || "Settings saved.";
+      $("settingsMessage").className = "message success";
+    }catch(err){
+      $("settingsMessage").textContent = "Could not save settings: " + err.message;
+      $("settingsMessage").className = "message error";
+    }
+  }
+
+  async function calculate(){
+    const body = {
+      category:String($("category").value),
+      connection:String($("connection").value),
+      contract_demand:Number($("contract_demand").value),
+      solar_units:Number($("solar_units").value),
+      gov_units:Number($("gov_units").value),
+      extra_charges:Number($("extra_charges").value),
+      ppa_tariff:Number($("ppa_tariff").value),
+      duty_pct:Number($("duty").value),
+      fppas_pct:Number($("fppas").value),
+      is_captive:$("captive").value === "true"
+    };
+
+    $("resultMessage").textContent = "Calculating...";
+    try{
+      const r = await fetch("/api/calculate-billing",{
+        method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || "Calculation failed");
+
+      $("outputPanel").classList.remove("hidden");
+      $("solarTotal").textContent = money(d.solar.total_solar_bill);
+      $("govTotal").textContent = money(d.government.total_mppb_bill);
+      $("ogTotal").textContent = money(d.og.total_mppb_bill);
+      $("finalTotal").textContent = money(d.final_customer_bill);
+      $("saving").textContent = Number(d.saving_pct || 0).toFixed(2) + "%";
+      $("landing").textContent = money(d.solar.landing_tariff_per_unit) + "/unit";
+
+      $("breakdown").innerHTML = [
+        ["MPPB Tariff",money(d.government.mppb_tariff)+"/unit"],
+        ["Government Energy Charges",money(d.government.mppb_energy_charges)],
+        ["Government Fixed Charge",money(d.government.fixed_charge)],
+        ["Government FPPAS",money(d.government.fppas)],
+        ["Government Electricity Duty",money(d.government.mppb_electricity_duty)],
+        ["Solar Landing Price",money(d.solar.landing_tariff_per_unit)+"/unit"],
+        ["Solar Energy Charges",money(d.solar.energy_charges)],
+        ["Solar Fixed Charge",money(d.solar.fixed_charge)],
+        ["Solar Electricity Duty",money(d.solar.solar_electricity_duty)]
+      ].map(row=>`<tr><td>${row[0]}</td><td class="right">${row[1]}</td></tr>`).join("");
+
+      $("resultMessage").textContent = "";
+      $("resultMessage").className = "message";
+    }catch(err){
+      $("resultMessage").textContent = "Calculation error: " + err.message;
+      $("resultMessage").className = "message error";
+      $("outputPanel").classList.remove("hidden");
+    }
+  }
+
+  $("category").addEventListener("change",setConnections);
+  $("settingsBtn").addEventListener("click",openSettings);
+  $("closeSettingsBtn").addEventListener("click",closeSettings);
+  $("saveSettingsBtn").addEventListener("click",saveSettings);
+  $("calculateBtn").addEventListener("click",calculate);
+  setConnections();
+  renderSettings({});
+})();
 </script>
 </body>
 </html>
