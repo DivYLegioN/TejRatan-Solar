@@ -36,7 +36,7 @@ class Tariffs:
     GOV_OG_RATE = 10.58             # Rs/unit -- grid/utility tariff including all charges (peak-hour, fixed charges etc.)
     MPEB_DEDUCTION = 0.032           # 3.2% transmission/wheeling loss on gross generation
     BANK_WITHDRAWAL_FACTOR = 0.92    # only 92% of surplus generation is bankable
-    BANK_SETTLEMENT_RATE = 2.4     # Rs/unit paid out for units left in bank at year end (placeholder -- set in Settings)
+    BANK_SETTLEMENT_RATE = 3.50     # Rs/unit paid out for units left in bank at year end (placeholder -- set in Settings)
 
     # Per-unit open-access / cross-subsidy "solar charge" -- depends on
     # voltage level AND whether the customer is Group Captive or Third Party.
@@ -136,14 +136,26 @@ def get_max_customers(capacity_kw: int) -> int:
 class PPAPartner:
     def __init__(self, name: str, monthly_units: float, kv_level: int,
                  partner_type: int, fixed_charge: float,
-                 captive_share_pct: float = 0, peak_units: float = 0):
+                 captive_share_pct: float = 0, peak_units: float = 0,
+                 category: str = "HV_3.1", connection: str = None,
+                 contract_demand: float = 0.0):
         self.name = name
         self.monthly_units = monthly_units          # contracted units required / month
         self.kv_level = kv_level                    # 11 or 33
         self.partner_type = partner_type             # <=26 -> Group Captive, else Third Party
-        self.fixed_charge = fixed_charge              # Rs, per-customer fixed charge on solar bill
+        self.fixed_charge = fixed_charge              # Rs, legacy per-customer fixed charge (kept for backward-compat, no longer used by BillingEngine)
         self.captive_share_pct = captive_share_pct    # % equity held (only used if captive)
         self.peak_units = peak_units                  # units consumed 5PM-10PM
+
+        # NEW -- consumer category / connection / contract demand, used by
+        # BillingEngine to look up MPPB tariff + fixed-charge rate from
+        # MPPBTariffConfig (replaces the old SOLCHR/PEAK_RATE/GOV_PPA_RATE
+        # constants). connection defaults to this partner's kv_level
+        # ("11kV"/"33kV") unless explicitly overridden (needed for LV_4.1,
+        # which uses "Rural"/"Urban" instead).
+        self.category = category
+        self.connection = connection if connection is not None else f"{kv_level}kV"
+        self.contract_demand = contract_demand
 
         self.is_captive = (
     Tariffs.CAPTIVE_SHARE_MIN_PCT <= captive_share_pct <= Tariffs.CAPTIVE_SHARE_MAX_PCT
@@ -217,29 +229,59 @@ class BankingEngine:
 # 4. BILLING ENGINE -- per-customer bill & saving calculations
 # ---------------------------------------------------------------------------
 class BillingEngine:
+    """
+    UPDATED: solar_bill / gov_bill / original_gov_bill now delegate to the
+    new MPPB category-based formulas (MPPBBillingEngine + MPPBTariffConfig,
+    section 6 below) instead of the old flat SOLCHR_*/PEAK_RATE_*/
+    GOV_PPA_RATE/GOV_OG_RATE constants on Tariffs. Those old constants are
+    left in place (unused) for backward compatibility, but no longer drive
+    any calculation. Every other formula, loop, and rule in run() -- the
+    banking split, EMI/O&M share, revenue, profit -- is untouched; only the
+    per-customer bill amount computation changed.
+
+    Signatures are unchanged (still take `partner` + a unit count and
+    return a single float total) so SolarPlant.run() needed no changes.
+    """
+
     @staticmethod
     def solar_bill(partner: PPAPartner, solar_units: float) -> float:
-        rate = (Tariffs.SOLCHR_33KV_CAPTIVE if partner.kv_level == 33 and partner.is_captive
-                else Tariffs.SOLCHR_33KV_NORMAL if partner.kv_level == 33
-                else Tariffs.SOLCHR_11KV_CAPTIVE if partner.is_captive
-                else Tariffs.SOLCHR_11KV_NORMAL)
-
-        return (solar_units * (Tariffs.PPA_RATE + rate)) + partner.fixed_charge 
-
+        """NEW: solar bill = MPPB landing-price formula (PPA + wheeling +
+        transmission + CSS + additional surcharge, CSS/surcharge zeroed
+        for captive), keyed by the partner's kv_level. No fixed charge and
+        no FPPAS on the solar side, per spec."""
+        result = MPPBBillingEngine.solar_bill(
+            solar_units=solar_units,
+            ppa_tariff=Tariffs.PPA_RATE,
+            kv_level=partner.kv_level,
+            is_captive=partner.is_captive,
+        )
+        return result["total_solar_bill"]
 
     @staticmethod
     def gov_bill(partner: PPAPartner, gov_units: float) -> float:
-        peak_rate = Tariffs.PEAK_RATE_33KV if partner.kv_level == 33 else Tariffs.PEAK_RATE_11KV
-        peak_bill = partner.peak_units * peak_rate
-        return (gov_units * Tariffs.GOV_PPA_RATE) + peak_bill
+        """NEW: government/MPPB bill = category+connection MPPB tariff x
+        gov_units, plus FPPAS, Electricity Duty, and Fixed Charge (contract
+        demand x category+connection fixed-charge rate) -- all looked up
+        from MPPBTariffConfig via partner.category / partner.connection."""
+        result = MPPBBillingEngine.mppb_bill(
+            gov_units=gov_units,
+            category=partner.category,
+            connection=partner.connection,
+            contract_demand=partner.contract_demand,
+        )
+        return result["total_mppb_bill"]
 
     @staticmethod
     def original_gov_bill(partner: PPAPartner) -> float:
-        """What the customer would pay if 100% of their power came from the grid,
-        including the peak-hour charge they'd still pay either way."""
-        peak_rate = Tariffs.PEAK_RATE_33KV if partner.kv_level == 33 else Tariffs.PEAK_RATE_11KV
-        peak_bill = partner.peak_units * peak_rate
-        return (partner.monthly_units * Tariffs.GOV_OG_RATE) + peak_bill + partner.fixed_charge
+        """What the customer would pay if 100% grid-supplied -- same NEW
+        MPPB formula, applied to the partner's full monthly_units."""
+        result = MPPBBillingEngine.mppb_bill(
+            gov_units=partner.monthly_units,
+            category=partner.category,
+            connection=partner.connection,
+            contract_demand=partner.contract_demand,
+        )
+        return result["total_mppb_bill"]
 
     @staticmethod
     def saving_pct(solbill: float, govbill: float, ogbill: float) -> float:
