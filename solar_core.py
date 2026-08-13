@@ -136,9 +136,7 @@ def get_max_customers(capacity_kw: int) -> int:
 class PPAPartner:
     def __init__(self, name: str, monthly_units: float, kv_level: int,
                  partner_type: int, fixed_charge: float,
-                 captive_share_pct: float = 0, peak_units: float = 0,
-                 category: str = "HV_3.1", connection: str = None,
-                 contract_demand: float = 0.0, other_charges: float = 0.0):
+                 captive_share_pct: float = 0, peak_units: float = 0):
         self.name = name
         self.monthly_units = monthly_units          # contracted units required / month
         self.kv_level = kv_level                    # 11 or 33
@@ -146,13 +144,6 @@ class PPAPartner:
         self.fixed_charge = fixed_charge              # Rs, per-customer fixed charge on solar bill
         self.captive_share_pct = captive_share_pct    # % equity held (only used if captive)
         self.peak_units = peak_units                  # units consumed 5PM-10PM
-
-        # New MPPB/DISCOM billing inputs. These are optional for backward
-        # compatibility with existing callers; the frontend should supply them.
-        self.category = category
-        self.connection = connection or f"{kv_level}kV"
-        self.contract_demand = contract_demand        # kVA / contract load
-        self.other_charges = other_charges            # extra charge entered by user
 
         self.is_captive = (
     Tariffs.CAPTIVE_SHARE_MIN_PCT <= captive_share_pct <= Tariffs.CAPTIVE_SHARE_MAX_PCT
@@ -226,108 +217,29 @@ class BankingEngine:
 # 4. BILLING ENGINE -- per-customer bill & saving calculations
 # ---------------------------------------------------------------------------
 class BillingEngine:
-    """
-    Billing wrapper used by the existing SolarPlant.run() flow.
-
-    The original generation, banking, customer allocation, revenue, EMI, O&M,
-    captive and P&L logic is unchanged. Only the three customer-billing
-    formulas are replaced with the new MPPB/Open-Access specification.
-    """
-
-    @staticmethod
-    def _customer_mppb_inputs(partner: PPAPartner):
-        """Return the category/connection/contract-demand inputs required by the
-        new tariff engine.
-        """
-        return (
-            partner.category,
-            partner.connection,
-            partner.contract_demand,
-            partner.other_charges,
-        )
-
     @staticmethod
     def solar_bill(partner: PPAPartner, solar_units: float) -> float:
-        """
-        NEW SOLAR BILL
+        rate = (Tariffs.SOLCHR_33KV_CAPTIVE if partner.kv_level == 33 and partner.is_captive
+                else Tariffs.SOLCHR_33KV_NORMAL if partner.kv_level == 33
+                else Tariffs.SOLCHR_11KV_CAPTIVE if partner.is_captive
+                else Tariffs.SOLCHR_11KV_NORMAL)
 
-        Landing Price = PPA + Wheeling + Transmission + CSS + Additional Surcharge
-        Energy Charges = Solar Units x Landing Price
-        Fixed Charge = Contract Demand x MPPB Fixed Charge Rate
-        Electricity Duty = Energy Charges x Duty %
-        Solar Billing = Energy Charges + Fixed Charge + Electricity Duty + Extra Charges
+        return (solar_units * (Tariffs.PPA_RATE + rate)) + partner.fixed_charge 
 
-        FPPAS is never charged on solar units.
-        """
-        category, connection, contract_demand, other_charges = BillingEngine._customer_mppb_inputs(partner)
-        result = MPPBBillingEngine.solar_bill(
-            solar_units=solar_units,
-            ppa_tariff=Tariffs.PPA_RATE,
-            kv_level=partner.kv_level,
-            category=category,
-            connection=connection,
-            contract_demand=contract_demand,
-            is_captive=partner.is_captive,
-            duty_pct=None,
-            other_charges=other_charges,
-        )
-        return result["total_solar_bill"]
 
     @staticmethod
     def gov_bill(partner: PPAPartner, gov_units: float) -> float:
-        """
-        NEW GOVERNMENT BILL
-
-        Government Units = units utilised during 5 PM-10 PM (partner.peak_units).
-        The gov_units argument is retained for API compatibility with the existing
-        run() method, but the new formula bills the actual peak-time units.
-
-        Energy Charges = Peak Units x MPPB Tariff
-        Fixed Charge = Contract Demand x MPPB Fixed Charge Rate
-        FPPAS = Energy Charges x FPPAS %
-        Electricity Duty = Energy Charges x Duty %
-        Government Billing = Energy + Fixed + FPPAS + Duty + Extra Charges
-        """
-        category, connection, contract_demand, other_charges = BillingEngine._customer_mppb_inputs(partner)
-        result = MPPBBillingEngine.mppb_bill(
-            gov_units=partner.peak_units,
-            category=category,
-            connection=connection,
-            contract_demand=contract_demand,
-            duty_pct=None,
-            fppas_pct=None,
-            other_charges=other_charges,
-        )
-        return result["total_mppb_bill"]
+        peak_rate = Tariffs.PEAK_RATE_33KV if partner.kv_level == 33 else Tariffs.PEAK_RATE_11KV
+        peak_bill = partner.peak_units * peak_rate
+        return (gov_units * Tariffs.GOV_PPA_RATE) + peak_bill
 
     @staticmethod
     def original_gov_bill(partner: PPAPartner) -> float:
-        """
-        NEW OG BILL (100% government baseline).
-
-        OG Units = Solar Units + Government Peak Units.
-        In the existing data model, the contracted monthly units are the solar
-        allocation and partner.peak_units are the additional 5 PM-10 PM units,
-        so OG Units = partner.monthly_units + partner.peak_units.
-
-        Energy Charges = OG Units x MPPB Tariff
-        Fixed Charge = Contract Demand x MPPB Fixed Charge Rate
-        FPPAS = Energy Charges x FPPAS %
-        Electricity Duty = Energy Charges x Duty %
-        OG Billing = Energy + Fixed + FPPAS + Duty + Extra Charges
-        """
-        category, connection, contract_demand, other_charges = BillingEngine._customer_mppb_inputs(partner)
-        og_units = partner.monthly_units + partner.peak_units
-        result = MPPBBillingEngine.mppb_bill(
-            gov_units=og_units,
-            category=category,
-            connection=connection,
-            contract_demand=contract_demand,
-            duty_pct=None,
-            fppas_pct=None,
-            other_charges=other_charges,
-        )
-        return result["total_mppb_bill"]
+        """What the customer would pay if 100% of their power came from the grid,
+        including the peak-hour charge they'd still pay either way."""
+        peak_rate = Tariffs.PEAK_RATE_33KV if partner.kv_level == 33 else Tariffs.PEAK_RATE_11KV
+        peak_bill = partner.peak_units * peak_rate
+        return (partner.monthly_units * Tariffs.GOV_OG_RATE) + peak_bill + partner.fixed_charge
 
     @staticmethod
     def saving_pct(solbill: float, govbill: float, ogbill: float) -> float:
@@ -779,67 +691,52 @@ class MPPBTariffConfig:
 
 class MPPBBillingEngine:
     """
-    MPPB/DISCOM + Solar Open Access billing engine.
-
-    This class contains only billing formulas. The existing SolarPlant generation,
-    banking, allocation, revenue, EMI, O&M, captive and P&L logic remains outside
-    this class and is not altered.
+    New tariff & billing structure for HV 3.1 / HV 3.2 / LV 4.1 consumer
+    categories. Solar and Government/MPEB calculations are kept completely
+    independent, per spec, and are only added together in combined_bill().
     """
 
     # =================== GOVERNMENT / MPPB SIDE ===================
     @staticmethod
     def mppb_energy_charges(gov_units: float, mppb_tariff: float) -> float:
-        """Energy Charges = Government/MPEB units x MPPB tariff."""
+        """MPEB Energy Charges = Government Units x MPPB Tariff"""
         return gov_units * mppb_tariff
 
     @staticmethod
     def fppas(mppb_energy_charges: float, fppas_pct: float = None) -> float:
-        """FPPAS applies only to Government/MPPB energy charges."""
+        """FPPAS = MPEB Energy Charges x FPPAS %  (government units only)"""
         pct = MPPBTariffConfig.FPPAS_PCT if fppas_pct is None else fppas_pct
         return mppb_energy_charges * (pct / 100)
 
     @staticmethod
-    def mppb_electricity_duty_from_energy(energy_charges: float, duty_pct: float = None) -> float:
-        """Electricity Duty = Government/MPPB energy charges x Duty %."""
-        pct = MPPBTariffConfig.ELECTRICITY_DUTY_PCT if duty_pct is None else duty_pct
-        MPPBTariffConfig.validate_electricity_duty(pct)
-        return energy_charges * (pct / 100)
-
-    @staticmethod
     def mppb_electricity_duty(gov_units: float, mppb_tariff: float,
                                duty_pct: float = None) -> float:
-        """Backward-compatible helper using Government units x tariff first."""
-        energy_charges = MPPBBillingEngine.mppb_energy_charges(gov_units, mppb_tariff)
-        return MPPBBillingEngine.mppb_electricity_duty_from_energy(energy_charges, duty_pct)
+        """MPEB Electricity Duty = Government Units x MPPB Tariff x Duty %"""
+        pct = MPPBTariffConfig.ELECTRICITY_DUTY_PCT if duty_pct is None else duty_pct
+        MPPBTariffConfig.validate_electricity_duty(pct)
+        return gov_units * mppb_tariff * (pct / 100)
 
     @staticmethod
     def fixed_charge(contract_demand: float, fixed_charge_rate: float) -> float:
-        """Fixed Charge = Contract Demand x Applicable MPPB Fixed Charge Rate."""
+        """Fixed Charge = Contract Demand x Applicable Fixed Charge Rate"""
         return contract_demand * fixed_charge_rate
 
     @staticmethod
     def mppb_bill(gov_units: float, category: str, connection: str,
                   contract_demand: float, duty_pct: float = None,
                   fppas_pct: float = None, other_charges: float = 0.0) -> Dict:
-        """
-        GOVERNMENT / MPPB BILL
-
-        Energy Charges = Government/peak units x MPPB tariff
-        Fixed Charge = Contract Demand x MPPB fixed-charge rate
-        FPPAS = Energy Charges x FPPAS %
-        Electricity Duty = Energy Charges x Duty %
-        Government Bill = Energy + Fixed + FPPAS + Duty + Extra Charges
-        """
+        """Independent MPPB/Government bill. Contract Demand stays a
+        customer-level input, passed in by the caller."""
         MPPBTariffConfig.validate_category_connection(category, connection)
         mppb_tariff = MPPBTariffConfig.get_tariff(category, connection)
         fixed_rate = MPPBTariffConfig.get_fixed_charge_rate(category, connection)
 
         energy_charges = MPPBBillingEngine.mppb_energy_charges(gov_units, mppb_tariff)
         fppas_amt = MPPBBillingEngine.fppas(energy_charges, fppas_pct)
-        duty_amt = MPPBBillingEngine.mppb_electricity_duty_from_energy(energy_charges, duty_pct)
+        duty_amt = MPPBBillingEngine.mppb_electricity_duty(gov_units, mppb_tariff, duty_pct)
         fixed_amt = MPPBBillingEngine.fixed_charge(contract_demand, fixed_rate)
 
-        total = energy_charges + fixed_amt + fppas_amt + duty_amt + other_charges
+        total = energy_charges + fppas_amt + duty_amt + fixed_amt + other_charges
 
         return {
             "category": category,
@@ -860,9 +757,9 @@ class MPPBBillingEngine:
     @staticmethod
     def open_access_charges(kv_level, is_captive: bool) -> Dict[str, float]:
         """
-        Solar open-access components used to build the landing price.
-        CSS and Additional Surcharge become zero for an eligible captive/group-
-        captive customer under the existing 26%-49% captive rule.
+        Solar open-access charges. If the customer is eligible captive/
+        group-captive (existing 26% equity rule, passed in via is_captive),
+        CSS and Additional Surcharge become zero.
         """
         wheeling = MPPBTariffConfig.get_wheeling_rate(kv_level)
         transmission = MPPBTariffConfig.TRANSMISSION
@@ -882,105 +779,64 @@ class MPPBBillingEngine:
     @staticmethod
     def landing_tariff(ppa_tariff: float, kv_level, is_captive: bool) -> float:
         """
-        Landing Price = PPA + Wheeling + Transmission + CSS + Additional Surcharge.
+        Landing Tariff = PPA Tariff + Wheeling + Transmission + CSS + Additional Surcharge
+        For an eligible captive/group-captive customer, CSS and Additional
+        Surcharge are zero, so this collapses to:
+        Landing Tariff = PPA Tariff + Wheeling + Transmission
         """
         oa = MPPBBillingEngine.open_access_charges(kv_level, is_captive)
-        return (ppa_tariff + oa["wheeling"] + oa["transmission"] +
-                oa["css"] + oa["additional_surcharge"])
+        return ppa_tariff + oa["wheeling"] + oa["transmission"] + oa["css"] + oa["additional_surcharge"]
 
     @staticmethod
-    def solar_electricity_duty(solar_energy_charges: float, duty_pct: float = None) -> float:
-        """Solar Electricity Duty = Solar Energy Charges x Duty %."""
+    def solar_electricity_duty(solar_units: float, ppa_tariff: float,
+                                duty_pct: float = None) -> float:
+        """Solar Electricity Duty = Solar Units x PPA Tariff x Duty %"""
         pct = MPPBTariffConfig.ELECTRICITY_DUTY_PCT if duty_pct is None else duty_pct
         MPPBTariffConfig.validate_electricity_duty(pct)
-        return solar_energy_charges * (pct / 100)
+        return solar_units * ppa_tariff * (pct / 100)
 
     @staticmethod
     def solar_bill(solar_units: float, ppa_tariff: float, kv_level, is_captive: bool,
-                   category: str = "HV_3.1", connection: str = None,
-                   contract_demand: float = 0.0, duty_pct: float = None,
-                   other_charges: float = 0.0) -> Dict:
+                    duty_pct: float = None, other_charges: float = 0.0) -> Dict:
         """
-        NEW SOLAR BILL
-
-        Landing Price = PPA + Wheeling + Transmission + CSS + Additional Surcharge
-        Solar Energy Charges = Solar Units x Landing Price
-        Fixed Charge = Contract Demand x MPPB Fixed Charge Rate
-        Electricity Duty = Solar Energy Charges x Duty %
-        Solar Billing = Energy Charges + Fixed Charge + Electricity Duty + Extra Charges
-
-        FPPAS = 0 on solar units.
-        OA components are included ONCE inside the landing price and are not added
-        again separately to the final solar total.
+        Independent solar bill. FPPAS is always zero here -- it never
+        applies to solar/PPA units, per spec.
         """
-        connection = connection or f"{kv_level}kV"
-        MPPBTariffConfig.validate_category_connection(category, connection)
-        fixed_rate = MPPBTariffConfig.get_fixed_charge_rate(category, connection)
         oa = MPPBBillingEngine.open_access_charges(kv_level, is_captive)
 
-        landing_price = (ppa_tariff + oa["wheeling"] + oa["transmission"] +
-                         oa["css"] + oa["additional_surcharge"])
-        energy_charges = solar_units * landing_price
-        fixed_amt = MPPBBillingEngine.fixed_charge(contract_demand, fixed_rate)
-        duty_amt = MPPBBillingEngine.solar_electricity_duty(energy_charges, duty_pct)
-        solar_fppas = 0.0
+        ppa_energy_cost = solar_units * ppa_tariff
+        wheeling_amt = solar_units * oa["wheeling"]
+        transmission_amt = solar_units * oa["transmission"]
+        css_amt = solar_units * oa["css"]
+        additional_surcharge_amt = solar_units * oa["additional_surcharge"]
+        duty_amt = MPPBBillingEngine.solar_electricity_duty(solar_units, ppa_tariff, duty_pct)
+        solar_fppas = 0.0  # FPPAS must NOT apply to solar/PPA units
 
-        total = energy_charges + fixed_amt + duty_amt + other_charges
+        total = (ppa_energy_cost + wheeling_amt + transmission_amt + css_amt
+                 + additional_surcharge_amt + duty_amt + solar_fppas + other_charges)
 
         return {
             "solar_units": solar_units,
             "ppa_tariff": ppa_tariff,
-            "wheeling_rate": oa["wheeling"],
-            "transmission_rate": oa["transmission"],
-            "css_rate": oa["css"],
-            "additional_surcharge_rate": oa["additional_surcharge"],
-            "landing_tariff_per_unit": landing_price,
-            "landing_price": landing_price,
-            "energy_charges": energy_charges,
-            "ppa_energy_cost": solar_units * ppa_tariff,
-            "wheeling_amount": solar_units * oa["wheeling"],
-            "transmission_amount": solar_units * oa["transmission"],
-            "css_amount": solar_units * oa["css"],
-            "additional_surcharge_amount": solar_units * oa["additional_surcharge"],
-            "fixed_charge_rate": fixed_rate,
-            "contract_demand": contract_demand,
-            "fixed_charge": fixed_amt,
+            "ppa_energy_cost": ppa_energy_cost,
+            "wheeling": wheeling_amt,
+            "transmission": transmission_amt,
+            "css": css_amt,
+            "additional_surcharge": additional_surcharge_amt,
             "solar_electricity_duty": duty_amt,
             "fppas": solar_fppas,
             "other_charges": other_charges,
+            "landing_tariff_per_unit": MPPBBillingEngine.landing_tariff(ppa_tariff, kv_level, is_captive),
             "is_captive": is_captive,
             "total_solar_bill": total,
         }
 
-    # =================== OG BILL ===================
-    @staticmethod
-    def og_bill(total_units: float, category: str, connection: str,
-                contract_demand: float, duty_pct: float = None,
-                fppas_pct: float = None, other_charges: float = 0.0) -> Dict:
-        """
-        OG BILL / 100% GOVERNMENT BASELINE
-
-        OG Units = Solar Units + Government Peak Units
-        Energy Charges = OG Units x MPPB Tariff
-        Fixed Charge = Contract Demand x MPPB Fixed Charge Rate
-        FPPAS = Energy Charges x FPPAS %
-        Electricity Duty = Energy Charges x Duty %
-        OG Billing = Energy + Fixed + FPPAS + Duty + Extra Charges
-        """
-        return MPPBBillingEngine.mppb_bill(
-            gov_units=total_units,
-            category=category,
-            connection=connection,
-            contract_demand=contract_demand,
-            duty_pct=duty_pct,
-            fppas_pct=fppas_pct,
-            other_charges=other_charges,
-        )
-
     # =================== COMBINED ===================
     @staticmethod
     def combined_bill(solar_bill: Dict, mppb_bill: Dict) -> Dict:
-        """Total customer bill = Solar Bill + remaining Government Bill."""
+        """Total Customer Bill = Solar Bill + MPPB/Government Bill.
+        No charge is double-counted: each input dict is independently
+        computed and simply summed here."""
         total = solar_bill["total_solar_bill"] + mppb_bill["total_mppb_bill"]
         return {
             "solar_bill_total": solar_bill["total_solar_bill"],
@@ -990,7 +846,10 @@ class MPPBBillingEngine:
 
     @staticmethod
     def customer_saving(original_mppb_bill: float, final_combined_bill: float) -> Dict:
-        """Saving = Original/OG Bill - Final Combined Bill."""
+        """
+        Saving = Original MPPB/Government Bill - (Solar/Open Access Bill + Remaining MPPB/Government Bill)
+        Saving % = Saving / Original Bill x 100
+        """
         saving = original_mppb_bill - final_combined_bill
         saving_pct = (saving / original_mppb_bill * 100) if original_mppb_bill else 0.0
         return {
@@ -998,4 +857,103 @@ class MPPBBillingEngine:
             "final_combined_bill": final_combined_bill,
             "saving": saving,
             "saving_pct": saving_pct,
+        }
+
+
+# =============================================================================
+# 7. GOVERNMENT / OG / SOLAR BILLING -- NEW FORMULA SET (ADDITIVE ONLY)
+#    Peak hours = 5 PM - 10 PM. Uses MPPBTariffConfig for FPPAS %,
+#    Electricity Duty %, and MPEB fixed-charge rate ("as mentioned in
+#    setting"). Fully parallel/self-contained -- does not touch
+#    MPPBBillingEngine, Tariffs, PPAPartner, BillingEngine, or SolarPlant.
+# =============================================================================
+class GovOGSolarBillingEngine:
+    """
+    government_bill()  -> peak-hour (5PM-10PM) units only, at govt tariff
+    og_bill()           -> (solar units + govt peak units) x govt tariff
+    solar_bill()        -> units x Landing Price (PPA+Wheeling+Transmission+CSS+Addl Surcharge)
+    FPPAS applies to government_bill/og_bill only, never to solar_bill.
+    """
+
+    # ---------- shared pieces ----------
+    @staticmethod
+    def fixed_charge(contract_load: float, mpeb_fixed_charge_rate: float) -> float:
+        """Fixed Charge = Contract Load x MPEB Fixed Charge Rate"""
+        return contract_load * mpeb_fixed_charge_rate
+
+    @staticmethod
+    def fppas(energy_charges: float, fppas_pct: float = None) -> float:
+        """FPPAS = Energy Charges x FPPAS %"""
+        pct = MPPBTariffConfig.FPPAS_PCT if fppas_pct is None else fppas_pct
+        return energy_charges * (pct / 100)
+
+    @staticmethod
+    def electricity_duty(energy_charges: float, duty_pct: float = None) -> float:
+        """Electricity Duty = Energy Charges x Electricity Duty %"""
+        pct = MPPBTariffConfig.ELECTRICITY_DUTY_PCT if duty_pct is None else duty_pct
+        MPPBTariffConfig.validate_electricity_duty(pct)
+        return energy_charges * (pct / 100)
+
+    # ---------- 1. GOVERNMENT BILL (peak-hour units only) ----------
+    @staticmethod
+    def government_bill(peak_units: float, government_tariff: float,
+                         contract_load: float, mpeb_fixed_charge_rate: float,
+                         fppas_pct: float = None, duty_pct: float = None,
+                         extra_charges: float = 0.0) -> Dict:
+        energy_charges = peak_units * government_tariff
+        fixed_amt = GovOGSolarBillingEngine.fixed_charge(contract_load, mpeb_fixed_charge_rate)
+        fppas_amt = GovOGSolarBillingEngine.fppas(energy_charges, fppas_pct)
+        duty_amt = GovOGSolarBillingEngine.electricity_duty(energy_charges, duty_pct)
+        total = energy_charges + fixed_amt + fppas_amt + duty_amt + extra_charges
+        return {
+            "peak_units": peak_units, "government_tariff": government_tariff,
+            "energy_charges": energy_charges, "fixed_charge": fixed_amt,
+            "fppas": fppas_amt, "electricity_duty": duty_amt,
+            "extra_charges": extra_charges, "total_government_bill": total,
+        }
+
+    # ---------- 2. OG BILL (solar units + government peak units) ----------
+    @staticmethod
+    def og_bill(solar_units: float, gov_peak_units: float, government_tariff: float,
+                contract_load: float, mpeb_fixed_charge_rate: float,
+                fppas_pct: float = None, duty_pct: float = None,
+                extra_charges: float = 0.0) -> Dict:
+        units_utilised = solar_units + gov_peak_units
+        energy_charges = units_utilised * government_tariff
+        fixed_amt = GovOGSolarBillingEngine.fixed_charge(contract_load, mpeb_fixed_charge_rate)
+        fppas_amt = GovOGSolarBillingEngine.fppas(energy_charges, fppas_pct)
+        duty_amt = GovOGSolarBillingEngine.electricity_duty(energy_charges, duty_pct)
+        total = energy_charges + fixed_amt + fppas_amt + duty_amt + extra_charges
+        return {
+            "solar_units": solar_units, "gov_peak_units": gov_peak_units,
+            "units_utilised": units_utilised, "government_tariff": government_tariff,
+            "energy_charges": energy_charges, "fixed_charge": fixed_amt,
+            "fppas": fppas_amt, "electricity_duty": duty_amt,
+            "extra_charges": extra_charges, "total_og_bill": total,
+        }
+
+    # ---------- 3. SOLAR BILL (landing price, no FPPAS) ----------
+    @staticmethod
+    def landing_price(solar_ppa: float, wheeling: float, transmission: float,
+                       css: float, additional_surcharge: float) -> float:
+        """Landing Price = Solar PPA + Wheeling + Transmission + CSS + Additional Surcharge"""
+        return solar_ppa + wheeling + transmission + css + additional_surcharge
+
+    @staticmethod
+    def solar_bill(units_utilised: float, solar_ppa: float, wheeling: float,
+                    transmission: float, css: float, additional_surcharge: float,
+                    contract_load: float, mpeb_fixed_charge_rate: float,
+                    duty_pct: float = None, extra_charges: float = 0.0) -> Dict:
+        landing = GovOGSolarBillingEngine.landing_price(
+            solar_ppa, wheeling, transmission, css, additional_surcharge)
+        energy_charges = units_utilised * landing
+        fixed_amt = GovOGSolarBillingEngine.fixed_charge(contract_load, mpeb_fixed_charge_rate)
+        duty_amt = GovOGSolarBillingEngine.electricity_duty(energy_charges, duty_pct)
+        # FPPAS never applies to solar bill, per spec.
+        total = energy_charges + fixed_amt + duty_amt + extra_charges
+        return {
+            "units_utilised": units_utilised, "landing_price": landing,
+            "energy_charges": energy_charges, "fixed_charge": fixed_amt,
+            "electricity_duty": duty_amt, "extra_charges": extra_charges,
+            "total_solar_bill": total,
         }
