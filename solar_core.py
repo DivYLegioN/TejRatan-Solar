@@ -259,17 +259,21 @@ class BillingEngine:
 
     @staticmethod
     def gov_bill(partner: PPAPartner, gov_units: float) -> float:
-        """NEW: government/MPPB bill = category+connection MPPB tariff x
-        gov_units, plus FPPAS, Electricity Duty, and Fixed Charge (contract
-        demand x category+connection fixed-charge rate) -- all looked up
-        from MPPBTariffConfig via partner.category / partner.connection."""
-        result = MPPBBillingEngine.mppb_bill(
-            gov_units=gov_units,
-            category=partner.category,
-            connection=partner.connection,
-            contract_demand=partner.contract_demand,
+        """UPDATED: Government (peak-hour, 5PM-10PM) bill. Energy charges
+        now bill only partner.peak_units (not full gov_units) at the
+        category+connection government tariff. FPPAS + Electricity Duty
+        key off these peak energy charges; Fixed Charge = contract_demand
+        x fixed-charge rate; extra_charges defaults to 0 (pass via caller
+        if needed). Delegates to GovOGSolarBillingEngine.government_bill()."""
+        government_tariff = MPPBTariffConfig.get_tariff(partner.category, partner.connection)
+        fixed_rate = MPPBTariffConfig.get_fixed_charge_rate(partner.category, partner.connection)
+        result = GovOGSolarBillingEngine.government_bill(
+            peak_units=partner.peak_units,
+            government_tariff=government_tariff,
+            contract_load=partner.contract_demand,
+            mpeb_fixed_charge_rate=fixed_rate,
         )
-        return result["total_mppb_bill"]
+        return result["total_government_bill"]
 
     @staticmethod
     def original_gov_bill(partner: PPAPartner) -> float:
@@ -852,10 +856,12 @@ class MPPBBillingEngine:
         css_amt = solar_units * oa["css"]
         additional_surcharge_amt = solar_units * oa["additional_surcharge"]
         duty_amt = MPPBBillingEngine.solar_electricity_duty(solar_units, ppa_tariff, duty_pct)
-        solar_fppas = 0.0  # FPPAS must NOT apply to solar/PPA units
+        solar_fppas = 0.0,  # FPPAS must NOT apply to solar/PPA units
+        contract_demand=partner.contract_demand,   # NEW
+        fixed_charge_rate=fixed_rate               # NEW
 
         total = (ppa_energy_cost + wheeling_amt + transmission_amt + css_amt
-                 + additional_surcharge_amt + duty_amt + solar_fppas + other_charges)
+                 + additional_surcharge_amt + duty_amt + solar_fppas+ fixed_charge_rate + other_charges)
 
         return {
             "solar_units": solar_units,
@@ -867,6 +873,7 @@ class MPPBBillingEngine:
             "additional_surcharge": additional_surcharge_amt,
             "solar_electricity_duty": duty_amt,
             "fppas": solar_fppas,
+            "Fixes_Charges": fixed_charge_rate,
             "other_charges": other_charges,
             "landing_tariff_per_unit": MPPBBillingEngine.landing_tariff(ppa_tariff, kv_level, is_captive),
             "is_captive": is_captive,
@@ -939,17 +946,19 @@ class GovOGSolarBillingEngine:
     # ---------- 1. GOVERNMENT BILL (peak-hour units only) ----------
     @staticmethod
     def government_bill(peak_units: float, government_tariff: float,
-                         contract_load: float, mpeb_fixed_charge_rate: float,
+                         contract_load: float = 0.0, mpeb_fixed_charge_rate: float = 0.0,
                          fppas_pct: float = None, duty_pct: float = None,
                          extra_charges: float = 0.0) -> Dict:
+        """Peak-hour (5PM-10PM) Government bill. No Fixed Charge here --
+        fixed charge is billed once on the OG/MPPB side, never repeated on
+        the peak-hour-only government bill."""
         energy_charges = peak_units * government_tariff
-        fixed_amt = GovOGSolarBillingEngine.fixed_charge(contract_load, mpeb_fixed_charge_rate)
         fppas_amt = GovOGSolarBillingEngine.fppas(energy_charges, fppas_pct)
         duty_amt = GovOGSolarBillingEngine.electricity_duty(energy_charges, duty_pct)
-        total = energy_charges + fixed_amt + fppas_amt + duty_amt + extra_charges
+        total = energy_charges + fppas_amt + duty_amt + extra_charges
         return {
             "peak_units": peak_units, "government_tariff": government_tariff,
-            "energy_charges": energy_charges, "fixed_charge": fixed_amt,
+            "energy_charges": energy_charges, "fixed_charge": 0.0,
             "fppas": fppas_amt, "electricity_duty": duty_amt,
             "extra_charges": extra_charges, "total_government_bill": total,
         }
@@ -998,4 +1007,124 @@ class GovOGSolarBillingEngine:
             "energy_charges": energy_charges, "fixed_charge": fixed_amt,
             "electricity_duty": duty_amt, "extra_charges": extra_charges,
             "total_solar_bill": total,
+        }
+
+
+# =============================================================================
+# 8. TOTAL-PAYABLE-AFTER-SOLARIZATION, SAVINGS, CONSUMER FINANCIALS, EMI
+#    -- ADDITIVE ONLY. Mirrors the bill_ledger.html frontend exactly.
+#    Nothing above this line was touched.
+# =============================================================================
+class SolarizationSummaryEngine:
+    """
+    Combines GovOGSolarBillingEngine outputs into the two things the
+    frontend shows: 'Total Payable After Solarization' and the
+    before/after savings comparison (monthly + annual).
+    """
+
+    @staticmethod
+    def total_payable_after_solarization(solar_bill: Dict, government_bill: Dict) -> Dict:
+        """Total Payable After Solarization = Solar Bill + Government
+        (peak-hour) Bill -- what the consumer actually pays each month
+        once solarized."""
+        solar_total = solar_bill["total_solar_bill"]
+        gov_total = government_bill["total_government_bill"]
+        total = solar_total + gov_total
+        return {
+            "solar_bill_total": solar_total,
+            "government_bill_total": gov_total,
+            "total_payable_after_solarization": total,
+        }
+
+    @staticmethod
+    def savings(og_bill: Dict, after_solarization: Dict) -> Dict:
+        """Before = OG Bill (baseline, pre-solarization). After = Total
+        Payable After Solarization. Returns both monthly and annual (x12)
+        savings in Rs and %."""
+        og_total = og_bill["total_og_bill"]
+        after_total = after_solarization["total_payable_after_solarization"]
+
+        monthly_saving = og_total - after_total
+        monthly_saving_pct = (monthly_saving / og_total * 100) if og_total else 0.0
+
+        annual_og = og_total * 12
+        annual_after = after_total * 12
+        annual_saving = annual_og - annual_after
+        annual_saving_pct = (annual_saving / annual_og * 100) if annual_og else 0.0
+
+        return {
+            "monthly_og_bill": og_total,
+            "monthly_payable_after_solar": after_total,
+            "monthly_saving": monthly_saving,
+            "monthly_saving_pct": monthly_saving_pct,
+            "annual_og_bill": annual_og,
+            "annual_payable_after_solar": annual_after,
+            "annual_saving": annual_saving,
+            "annual_saving_pct": annual_saving_pct,
+        }
+
+
+class ConsumerFinancialsEngine:
+    """
+    Per-consumer Revenue / Expense / Profit -- Revenue = this consumer's
+    solar units x PPA rate (what they pay the plant for solar energy).
+    Expense = this consumer's EMI share + O&M share. Profit = Revenue -
+    Expense. Both monthly and annual (x12) figures returned.
+    """
+
+    @staticmethod
+    def revenue(solar_units: float, ppa_rate: float) -> float:
+        """Revenue = Solar Units x PPA Rate"""
+        return solar_units * ppa_rate
+
+    @staticmethod
+    def expense(emi_monthly: float, om_monthly: float) -> float:
+        """Total Expense = EMI share + O&M share"""
+        return emi_monthly + om_monthly
+
+    @staticmethod
+    def monthly_financials(solar_units: float, ppa_rate: float,
+                            emi_monthly: float, om_monthly: float) -> Dict:
+        revenue = ConsumerFinancialsEngine.revenue(solar_units, ppa_rate)
+        expense = ConsumerFinancialsEngine.expense(emi_monthly, om_monthly)
+        profit = revenue - expense
+        return {
+            "solar_units": solar_units, "ppa_rate": ppa_rate,
+            "emi_monthly": emi_monthly, "om_monthly": om_monthly,
+            "revenue_monthly": revenue, "expense_monthly": expense, "profit_monthly": profit,
+            "revenue_annual": revenue * 12, "expense_annual": expense * 12, "profit_annual": profit * 12,
+        }
+
+
+class EMICalculator:
+    """
+    Standalone EMI calculator -- Project Cost + Tenure (years) + Annual
+    Interest Rate % -> monthly EMI, total interest, total payment.
+    Standard reducing-balance amortization formula:
+        EMI = P x r x (1+r)^n / ((1+r)^n - 1)
+    where r = monthly rate (annual_rate_pct / 12 / 100), n = tenure in months.
+    If rate is 0, EMI = P / n (straight-line).
+    """
+
+    @staticmethod
+    def calculate(project_cost: float, tenure_years: float, annual_rate_pct: float) -> Dict:
+        n = max(1, round(tenure_years * 12))
+        r = annual_rate_pct / 12 / 100
+
+        if r == 0:
+            emi = project_cost / n
+        else:
+            emi = project_cost * r * ((1 + r) ** n) / (((1 + r) ** n) - 1)
+
+        total_payment = emi * n
+        total_interest = total_payment - project_cost
+
+        return {
+            "project_cost": project_cost,
+            "tenure_years": tenure_years,
+            "tenure_months": n,
+            "annual_rate_pct": annual_rate_pct,
+            "emi_monthly": emi,
+            "total_interest": total_interest,
+            "total_payment": total_payment,
         }
