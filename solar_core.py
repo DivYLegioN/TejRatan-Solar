@@ -36,7 +36,7 @@ class Tariffs:
     GOV_OG_RATE = 10.58             # Rs/unit -- grid/utility tariff including all charges (peak-hour, fixed charges etc.)
     MPEB_DEDUCTION = 0.032           # 3.2% transmission/wheeling loss on gross generation
     BANK_WITHDRAWAL_FACTOR = 0.92    # only 92% of surplus generation is bankable
-    BANK_SETTLEMENT_RATE = 3.50     # Rs/unit paid out for units left in bank at year end (placeholder -- set in Settings)
+    BANK_SETTLEMENT_RATE = 2.4     # Rs/unit paid out for units left in bank at year end (placeholder -- set in Settings)
 
     # Per-unit open-access / cross-subsidy "solar charge" -- depends on
     # voltage level AND whether the customer is Group Captive or Third Party.
