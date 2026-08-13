@@ -842,44 +842,18 @@ class MPPBBillingEngine:
         return solar_units * ppa_tariff * (pct / 100)
 
     @staticmethod
-    def solar_bill(solar_units: float, ppa_tariff: float, kv_level, is_captive: bool,
-                    duty_pct: float = None, other_charges: float = 0.0) -> Dict:
-        """
-        Independent solar bill. FPPAS is always zero here -- it never
-        applies to solar/PPA units, per spec.
-        """
-        oa = MPPBBillingEngine.open_access_charges(kv_level, is_captive)
+    def solar_bill(partner: PPAPartner, solar_units: float) -> float:
+     fixed_rate = MPPBTariffConfig.get_fixed_charge_rate(partner.category, partner.connection)
+     result = MPPBBillingEngine.solar_bill(
+      solar_units=solar_units,
+      ppa_tariff=Tariffs.PPA_RATE,
+      kv_level=partner.kv_level,
+      is_captive=partner.is_captive,
+      contract_demand=partner.contract_demand,fixed_charge_rate=fixed_rate,
+     )
+     return result["total_solar_bill"]
 
-        ppa_energy_cost = solar_units * ppa_tariff
-        wheeling_amt = solar_units * oa["wheeling"]
-        transmission_amt = solar_units * oa["transmission"]
-        css_amt = solar_units * oa["css"]
-        additional_surcharge_amt = solar_units * oa["additional_surcharge"]
-        duty_amt = MPPBBillingEngine.solar_electricity_duty(solar_units, ppa_tariff, duty_pct)
-        solar_fppas = 0.0,  # FPPAS must NOT apply to solar/PPA units
-        contract_demand=partner.contract_demand,   # NEW
-        fixed_charge_rate=fixed_rate               # NEW
-
-        total = (ppa_energy_cost + wheeling_amt + transmission_amt + css_amt
-                 + additional_surcharge_amt + duty_amt + solar_fppas+ fixed_charge_rate + other_charges)
-
-        return {
-            "solar_units": solar_units,
-            "ppa_tariff": ppa_tariff,
-            "ppa_energy_cost": ppa_energy_cost,
-            "wheeling": wheeling_amt,
-            "transmission": transmission_amt,
-            "css": css_amt,
-            "additional_surcharge": additional_surcharge_amt,
-            "solar_electricity_duty": duty_amt,
-            "fppas": solar_fppas,
-            "Fixes_Charges": fixed_charge_rate,
-            "other_charges": other_charges,
-            "landing_tariff_per_unit": MPPBBillingEngine.landing_tariff(ppa_tariff, kv_level, is_captive),
-            "is_captive": is_captive,
-            "total_solar_bill": total,
-        }
-
+ 
     # =================== COMBINED ===================
     @staticmethod
     def combined_bill(solar_bill: Dict, mppb_bill: Dict) -> Dict:
