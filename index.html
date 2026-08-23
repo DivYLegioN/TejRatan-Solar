@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bill Ledger — Multi-Consumer Billing &amp; Plant Financials</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper: #EDF1EA; --paper-alt: #E2E9DF; --card: #F5F8F3;
+    --ink: #1C2B24; --ink-soft: #55655C; --rule: #BFCABE;
+    --amber: #C97C1F; --amber-soft: #F1DDB8;
+    --teal: #1F6F6B; --teal-soft: #CFE4E2;
+    --plum: #6E4A63; --plum-soft: #E5D9E2;
+    --gold: #A6892B; --gold-soft: #ECE0BC;
+    --red: #A73B2E; --green: #2E7D5B;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+      radial-gradient(circle at 1px 1px, rgba(28,43,36,0.05) 1px, transparent 0) 0 0/22px 22px, var(--paper);
+    color:var(--ink); font-family:'IBM Plex Sans', sans-serif; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 80px;}
+
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+    padding-bottom:18px;margin-bottom:22px;border-bottom:2px solid var(--ink);flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .mark{width:38px;height:38px;flex:none;}
+  h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:26px;margin:0;letter-spacing:-0.01em;}
+  .sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px;letter-spacing:.02em;}
+  .meta{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);text-align:right;line-height:1.6;}
+  .meta b{color:var(--ink);}
+
+  h2.sec-title{font-family:'Space Grotesk',sans-serif;font-size:14px;text-transform:uppercase;
+    letter-spacing:.08em;margin:34px 0 4px;padding-top:18px;border-top:1.5px dashed var(--rule);}
+  .sec-note{font-size:11.5px;color:var(--ink-soft);margin-bottom:14px;}
+
+  .grid{display:grid;grid-template-columns:360px 1fr;gap:0;align-items:start;}
+  @media (max-width:880px){.grid{grid-template-columns:1fr;}}
+
+  .stub{background:var(--card);border:1px solid var(--rule);border-radius:10px 0 0 10px;padding:22px 22px 26px;}
+  @media (max-width:880px){.stub{border-radius:10px 10px 0 0;}}
+  .stub h2{font-family:'Space Grotesk',sans-serif;font-size:14px;text-transform:uppercase;letter-spacing:.08em;margin:0 0 4px;}
+  .stub .stub-note{font-size:11.5px;color:var(--ink-soft);margin-bottom:18px;}
+
+  .field-group{margin-bottom:20px;}
+  .field-group summary{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.07em;color:var(--teal);cursor:pointer;
+    padding:6px 0;border-top:1px dashed var(--rule);outline:none;}
+  .field-group[open] summary{margin-bottom:10px;}
+  .field-row{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;}
+  .field-row label{font-size:11.5px;color:var(--ink-soft);display:flex;justify-content:space-between;}
+  .field-row label .unit{color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;font-size:10px;}
+  input[type=number], input[type=text], select{
+    font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:var(--ink);
+    background:var(--paper);border:1px solid var(--rule);border-radius:5px;padding:8px 9px;width:100%;}
+  input:focus, select:focus{outline:2px solid var(--teal);outline-offset:1px;border-color:var(--teal);}
+  input[disabled], input[readonly]{opacity:.7;}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  @media (max-width:640px){.three-col{grid-template-columns:1fr;}}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;
+    background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:9px 11px;margin-bottom:12px;}
+  .toggle-row span{font-size:12px;}
+  .switch{position:relative;width:38px;height:20px;flex:none;}
+  .switch input{opacity:0;width:0;height:0;position:absolute;}
+  .slider{position:absolute;inset:0;background:var(--rule);border-radius:20px;cursor:pointer;transition:.15s;}
+  .slider:before{content:"";position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;
+    border-radius:50%;transition:.15s;box-shadow:0 1px 2px rgba(0,0,0,.2);}
+  .switch input:checked + .slider{background:var(--teal);}
+  .switch input:checked + .slider:before{transform:translateX(18px);}
+
+  .bills{background:var(--paper-alt);border:1px solid var(--rule);border-left:none;
+    border-radius:0 10px 10px 0;padding:22px 22px 26px;}
+  @media (max-width:880px){.bills{border-radius:0 0 10px 10px;border-left:1px solid var(--rule);border-top:none;}}
+
+  .perf{display:flex;align-items:center;gap:6px;margin:0 0 18px;}
+  .perf .dash{flex:1;border-top:1.5px dashed var(--rule);}
+  .perf .dot{width:7px;height:7px;border-radius:50%;background:var(--paper);border:1.5px solid var(--rule);}
+  .perf .tag{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink-soft);letter-spacing:.08em;white-space:nowrap;}
+
+  .bill-card{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+    padding:16px 18px 18px;margin-bottom:16px;position:relative;overflow:hidden;}
+  .bill-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;}
+  .bill-card.gov:before{background:var(--teal);}
+  .bill-card.og:before{background:var(--plum);}
+  .bill-card.solar:before{background:var(--amber);}
+  .bill-card.bank:before{background:var(--green);}
+  .bill-card.bank-settle:before{background:var(--red);}
+  .bill-card.shortfall:before{background:var(--red);}
+  .bill-card.combo{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  .bill-card.combo:before{background:var(--gold);}
+  .bill-card.combo .line{color:#B9C6BE;}
+  .bill-card.combo .line span:last-child{color:var(--paper);}
+  .bill-card.combo .line.total{border-top-color:var(--paper);}
+  .bill-card.combo .line.total span:first-child{color:var(--paper);}
+  .bill-card.combo .line.total span:last-child{color:var(--gold-soft);}
+
+  .bill-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap;}
+  .bill-name{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;}
+  .chip{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;
+    padding:3px 8px;border-radius:20px;text-transform:uppercase;white-space:nowrap;}
+  .chip.gov{background:var(--teal-soft);color:var(--teal);}
+  .chip.og{background:var(--plum-soft);color:var(--plum);}
+  .chip.solar{background:var(--amber-soft);color:var(--amber);}
+  .chip.combo{background:var(--gold-soft);color:#3a2f10;}
+  .chip.bank{background:#D9EDE0;color:var(--green);}
+  .chip.shortfall{background:#F3D9D4;color:var(--red);}
+
+  .line{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;
+    border-bottom:1px dotted var(--rule);color:var(--ink-soft);}
+  .line span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--ink);}
+  .line.total{border-bottom:none;border-top:1px solid var(--ink);margin-top:6px;padding-top:9px;}
+  .line.total span:first-child{font-weight:600;color:var(--ink);font-size:13px;}
+  .line.total span:last-child{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:18px;
+    color:var(--ink);transition:transform .18s ease, opacity .18s ease;}
+  .line.total span:last-child.pulse{transform:scale(1.05);opacity:.55;}
+
+  .savings-strip{margin-top:4px;background:var(--ink);color:var(--paper);border-radius:10px;
+    padding:16px 20px;}
+  .savings-strip .row{display:flex;flex-wrap:wrap;gap:22px;align-items:center;justify-content:space-between;}
+  .savings-strip .item .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:#B9C6BE;font-family:'IBM Plex Mono',monospace;}
+  .savings-strip .item .v{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;margin-top:2px;}
+  .savings-strip .item .v.save{color:#8FD4B8;}
+  .savings-strip .item .v.spend{color:#F1C889;}
+  .savings-strip .divider{border-top:1px dashed #4C5C52;margin:14px 0;}
+  .savings-strip .period-label{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8AA098;
+    letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;}
+
+  /* ---------- financials & emi (full width) ---------- */
+  .panel-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media (max-width:880px){.panel-row{grid-template-columns:1fr;}}
+  .panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:20px 22px;}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;}
+  .stat{background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;}
+  .stat .k{font-size:10.5px;color:var(--ink-soft);letter-spacing:.06em;text-transform:uppercase;
+    font-family:'IBM Plex Mono',monospace;}
+  .stat .v{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;margin-top:4px;}
+  .stat .v.profit-pos{color:var(--green);}
+  .stat .v.profit-neg{color:var(--red);}
+  .stat .sub-v{font-size:10.5px;color:var(--ink-soft);margin-top:2px;font-family:'IBM Plex Mono',monospace;}
+
+  .btn{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;letter-spacing:.04em;
+    background:var(--teal);color:#fff;border:none;border-radius:6px;padding:9px 14px;cursor:pointer;
+    margin-top:14px;width:100%;}
+  .btn:hover{background:#175652;}
+  .btn.ghost{background:transparent;color:var(--teal);border:1px solid var(--teal);}
+  .btn.ghost:hover{background:var(--teal-soft);}
+
+  footer{margin-top:28px;font-size:11px;color:var(--ink-soft);text-align:center;}
+
+  /* ---------- monthwise table ---------- */
+  .table-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--card);}
+  table.mw{border-collapse:collapse;width:100%;min-width:1180px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;}
+  table.mw th, table.mw td{padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--rule);}
+  table.mw th:first-child, table.mw td:first-child{text-align:left;position:sticky;left:0;background:var(--card);}
+  table.mw thead th{background:var(--paper-alt);color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;
+    font-size:10px;font-weight:600;border-bottom:2px solid var(--ink);position:sticky;top:0;z-index:2;}
+  table.mw thead th:first-child{z-index:3;}
+  table.mw tbody tr:nth-child(even) td{background:rgba(0,0,0,0.02);}
+  table.mw tbody tr:nth-child(even) td:first-child{background:var(--paper);}
+  table.mw td.month-cell{font-family:'Space Grotesk',sans-serif;font-weight:600;color:var(--ink);}
+  table.mw td.save-pos{color:var(--green);font-weight:600;}
+  table.mw td.save-neg{color:var(--red);font-weight:600;}
+  table.mw td.bank-flag{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;}
+  table.mw td.bank-flag.surplus{color:var(--green);}
+  table.mw td.bank-flag.deficit-bank{color:var(--amber);}
+  table.mw td.bank-flag.deficit-gov{color:var(--red);}
+  table.mw tfoot td{border-top:2px solid var(--ink);border-bottom:none;font-weight:700;background:var(--ink);color:var(--paper);}
+  table.mw tfoot td:first-child{background:var(--ink);color:var(--gold-soft);}
+  table.mw tfoot td.save-pos{color:#8FD4B8;}
+  table.mw tfoot td.save-neg{color:#F1C889;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0 16px;font-size:11px;color:var(--ink-soft);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .legend i.surplus{background:var(--green);}
+  .legend i.deficit-bank{background:var(--amber);}
+  .legend i.deficit-gov{background:var(--red);}
+
+  /* ---------- customers manager (new) ---------- */
+  .cust-panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:20px 22px;margin-top:18px;}
+  .cust-form{display:grid;grid-template-columns:1.4fr 1.2fr 0.8fr 0.8fr 0.9fr 0.9fr auto;gap:10px;align-items:end;}
+  @media (max-width:980px){.cust-form{grid-template-columns:1fr 1fr;}}
+  .cust-form .field-row{margin-bottom:0;}
+  .cust-form .toggle-row{margin-bottom:0;padding:8px 10px;}
+  .cust-addbtn{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;
+    background:var(--teal);color:#fff;border:none;border-radius:6px;padding:9px 16px;cursor:pointer;white-space:nowrap;height:38px;}
+  .cust-addbtn:hover{background:#175652;}
+  .cust-list{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;}
+  .cust-card{background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;
+    min-width:180px;flex:1 1 200px;position:relative;}
+  .cust-card .nm{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;margin-bottom:3px;padding-right:20px;}
+  .cust-card .meta-line{font-size:10.5px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;line-height:1.7;}
+  .cust-card .rm{position:absolute;top:8px;right:8px;width:18px;height:18px;border-radius:50%;
+    border:none;background:var(--red);color:#fff;font-size:12px;line-height:1;cursor:pointer;}
+  .cust-card .rm:hover{opacity:.85;}
+  .cust-card .badge{display:inline-block;margin-top:6px;font-size:9.5px;padding:2px 7px;border-radius:20px;
+    background:var(--teal-soft);color:var(--teal);font-family:'IBM Plex Mono',monospace;letter-spacing:.04em;}
+  .cust-card .badge.captive{background:var(--gold-soft);color:#5b4a12;}
+  .empty-note{font-size:12px;color:var(--ink-soft);padding:14px 0;text-align:center;}
+  .totals-strip{display:flex;flex-wrap:wrap;gap:22px;background:var(--ink);color:var(--paper);
+    border-radius:10px;padding:16px 20px;margin-top:16px;}
+  .totals-strip .item .k{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#B9C6BE;
+    font-family:'IBM Plex Mono',monospace;}
+  .totals-strip .item .v{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;margin-top:2px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="14" r="7" fill="#C97C1F"/>
+        <g stroke="#C97C1F" stroke-width="2" stroke-linecap="round">
+          <path d="M20 2v3"/><path d="M20 23v3"/><path d="M31 14h-3"/><path d="M12 14H9"/>
+          <path d="M27.9 6.1l-2.1 2.1"/><path d="M14.2 19.8l-2.1 2.1"/>
+          <path d="M27.9 21.9l-2.1-2.1"/><path d="M14.2 8.2l-2.1-2.1"/>
+        </g>
+        <rect x="4" y="28" width="32" height="9" rx="1.5" fill="none" stroke="#1F6F6B" stroke-width="2"/>
+        <path d="M8 32.5h24" stroke="#1F6F6B" stroke-width="1.4" stroke-dasharray="2 2"/>
+      </svg>
+      <div>
+        <h1>Bill Ledger</h1>
+        <div class="sub">Multi-consumer billing, solarization savings &amp; plant financials</div>
+      </div>
+    </div>
+    <div class="meta">Peak window: <b>5:00 PM – 10:00 PM</b><br>Total contracted units = auto-sum of every consumer added below</div>
+  </header>
+
+  <!-- ============ CONSUMERS MANAGER (NEW) ============ -->
+  <div class="cust-panel">
+    <h2 class="sec-title" style="margin-top:0;padding-top:0;border-top:none;">Consumers</h2>
+    <div class="sec-note">Add as many customers as this plant serves. Each keeps their own category, contract load, captive status and contracted units — the plant's total contracted units (used by the shared bank engine) is the sum of everyone below, and every consumer gets their own revenue and savings figures further down the page.</div>
+
+    <div class="cust-form">
+      <div class="field-row">
+        <label>Consumer name</label>
+        <input type="text" id="newName" placeholder="e.g. Shree Industries">
+      </div>
+      <div class="field-row">
+        <label>Category</label>
+        <select id="newCategory">
+          <option value="HV_3.1|11kV">HV 3.1 — Industrial · 11 kV</option>
+          <option value="HV_3.1|33kV" selected>HV 3.1 — Industrial · 33 kV</option>
+          <option value="HV_3.2|11kV">HV 3.2 — Non-Industrial · 11 kV</option>
+          <option value="HV_3.2|33kV">HV 3.2 — Non-Industrial · 33 kV</option>
+          <option value="LV_4.1|Rural">LV 4.1 · Rural</option>
+          <option value="LV_4.1|Urban">LV 4.1 · Urban</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label>Contract load <span class="unit">kVA</span></label>
+        <input type="number" id="newContractLoad" value="500" min="0" step="1">
+      </div>
+      <div class="field-row">
+        <label>Solar units <span class="unit">kWh/mo</span></label>
+        <input type="number" id="newSolarUnits" value="6000" min="0" step="10">
+      </div>
+      <div class="field-row">
+        <label>Peak units <span class="unit">kWh/mo</span></label>
+        <input type="number" id="newPeakUnits" value="1200" min="0" step="10">
+      </div>
+      <div class="toggle-row">
+        <span>Captive</span>
+        <label class="switch"><input type="checkbox" id="newCaptive"><span class="slider"></span></label>
+      </div>
+      <button class="cust-addbtn" id="addCustomerBtn" type="button">+ Add Consumer</button>
+    </div>
+
+    <div class="cust-list" id="custList"></div>
+
+    <div class="totals-strip">
+      <div class="item"><div class="k">Consumers added</div><div class="v" id="tot_count">0</div></div>
+      <div class="item"><div class="k">Total consumption (solar, all consumers)</div><div class="v" id="tot_units">0</div></div>
+      <div class="item"><div class="k">Total peak units (all consumers)</div><div class="v" id="tot_peak">0</div></div>
+      <div class="item"><div class="k">Plant allows up to</div><div class="v" id="tot_maxcust">—</div></div>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:18px;">
+
+    <!-- ============ SETTINGS / INPUT STUB (plant + rates, shared) ============ -->
+    <div class="stub">
+      <h2>Plant &amp; Rate Settings</h2>
+      <div class="stub-note">These apply to every consumer above. Category-specific government tariff / MPEB rate are looked up automatically per consumer.</div>
+
+      <details class="field-group" open>
+        <summary>Banking Engine (Plant-level)</summary>
+        <div class="stub-note" style="margin-top:0;">Generation comes from the GSA table by capacity, for every one of the 12 months. Contracted units = ALL consumers combined (auto-summed above). The bank balance is carried forward month to month and clamped at zero.</div>
+        <div class="two-col">
+          <div class="field-row">
+            <label>Plant capacity <span class="unit">kW</span></label>
+            <select id="plantCapacity">
+              <option value="500">500 kW</option>
+              <option value="1000" selected>1000 kW</option>
+              <option value="1500">1500 kW</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label>Start month (Year begins here)</label>
+            <select id="genMonth">
+              <option value="0">Apr</option><option value="1">May</option><option value="2">Jun</option>
+              <option value="3">Jul</option><option value="4">Aug</option><option value="5">Sep</option>
+              <option value="6">Oct</option><option value="7">Nov</option><option value="8">Dec</option>
+              <option value="9">Jan</option><option value="10">Feb</option><option value="11">Mar</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <label>Selected-month gross generation (auto, from GSA table) <span class="unit">units</span></label>
+          <input type="text" id="grossGenerationDisplay" value="" disabled style="opacity:.75;">
+        </div>
+        <div class="field-row">
+          <label>MPEB deduction <span class="unit">%</span></label>
+          <input type="number" id="mpebDeductionPct" value="3.2" min="0" max="100" step="0.1">
+        </div>
+        <div class="field-row">
+          <label>Total contracted units — ALL consumers combined <span class="unit">units/mo</span></label>
+          <input type="number" id="plantContractedUnits" value="0" readonly style="opacity:.75;">
+        </div>
+        <div class="stub-note" style="margin:0 0 10px;">Auto-computed as the sum of every consumer's solar units above. Each consumer's plant share = their solar units ÷ this total.</div>
+        <div class="two-col">
+          <div class="field-row">
+            <label>Opening bank balance (start of year) <span class="unit">units</span></label>
+            <input type="number" id="bankOpening" value="0" min="0" step="10">
+          </div>
+          <div class="field-row">
+            <label>Bank withdrawal factor <span class="unit">e.g. 0.92</span></label>
+            <input type="number" id="bankWithdrawalFactor" value="0.92" min="0" max="1" step="0.01">
+          </div>
+        </div>
+        <div class="field-row">
+          <label>Bank settlement rate (paid once, on units lapsed at year-end) <span class="unit">Rs/unit</span></label>
+          <input type="number" id="bankSettlementRate" value="3.50" min="0" step="0.01">
+        </div>
+      </details>
+
+      <details class="field-group" open>
+        <summary>FPPAS &amp; Electricity Duty</summary>
+        <div class="two-col">
+          <div class="field-row">
+            <label>FPPAS <span class="unit">%</span></label>
+            <input type="number" id="fppasPct" value="4.5" step="0.1">
+          </div>
+          <div class="field-row">
+            <label>Electricity Duty <span class="unit">%</span></label>
+            <select id="edPct">
+              <option value="9" selected>9%</option>
+              <option value="10">10%</option>
+              <option value="11">11%</option>
+              <option value="12">12%</option>
+            </select>
+          </div>
+        </div>
+      </details>
+
+      <details class="field-group" open>
+        <summary>Solar Landing Price</summary>
+        <div class="field-row">
+          <label>Solar PPA rate <span class="unit">Rs/unit</span></label>
+          <input type="number" id="solarPpa" value="4.50" step="0.01">
+        </div>
+        <div class="two-col">
+          <div class="field-row">
+            <label>Wheeling <span class="unit">Rs/unit</span></label>
+            <input type="number" id="wheeling" value="0.17" step="0.01">
+          </div>
+          <div class="field-row">
+            <label>Transmission <span class="unit">Rs/unit</span></label>
+            <input type="number" id="transmission" value="0.46" step="0.01">
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="field-row">
+            <label>CSS <span class="unit">Rs/unit</span></label>
+            <input type="number" id="css" value="1.49" step="0.01">
+          </div>
+          <div class="field-row">
+            <label>Addl. surcharge <span class="unit">Rs/unit</span></label>
+            <input type="number" id="addlSurcharge" value="1.18" step="0.01">
+          </div>
+        </div>
+        <div class="stub-note" style="margin:2px 0 0;">Captive consumers pay Rs 0 CSS &amp; surcharge — auto-applied per consumer.</div>
+      </details>
+
+      <details class="field-group">
+        <summary>Extra Charges (per bill, per month)</summary>
+        <div class="field-row"><label>Extra — Government bill <span class="unit">Rs</span></label>
+          <input type="number" id="extraGov" value="0" step="1"></div>
+        <div class="field-row"><label>Extra — OG bill <span class="unit">Rs</span></label>
+          <input type="number" id="extraOg" value="0" step="1"></div>
+        <div class="field-row"><label>Extra — Solar bill <span class="unit">Rs</span></label>
+          <input type="number" id="extraSolar" value="0" step="1"></div>
+      </details>
+    </div>
+
+    <!-- ============ RESULTS / BILL PANEL (drill-down, one consumer at a time) ============ -->
+    <div class="bills">
+      <div class="perf"><span class="dot"></span><span class="dash"></span><span class="tag">BILL SUMMARY — SELECTED CONSUMER, SELECTED MONTH</span><span class="dash"></span><span class="dot"></span></div>
+
+      <div class="field-row" style="margin-bottom:18px;">
+        <label>Viewing details for</label>
+        <select id="customerSelect"></select>
+      </div>
+
+      <div class="bill-card og">
+        <div class="bill-head"><span class="bill-name">OG Bill</span><span class="chip og">Before solar · baseline</span></div>
+        <div class="line"><span>Energy charges (units × govt tariff)</span><span id="og_energy"></span></div>
+        <div class="line"><span>Fixed charge (load × MPEB rate)</span><span id="og_fixed"></span></div>
+        <div class="line"><span>FPPAS</span><span id="og_fppas"></span></div>
+        <div class="line"><span>Electricity duty</span><span id="og_ed"></span></div>
+        <div class="line"><span>Extra charges</span><span id="og_extra"></span></div>
+        <div class="line total"><span>Total OG Bill</span><span id="og_total"></span></div>
+      </div>
+
+      <div class="bill-card solar">
+        <div class="bill-head"><span class="bill-name">Solar Bill</span><span class="chip solar" id="solar_landing_chip">Landing price</span></div>
+        <div class="line"><span>Energy charges (share-adjusted supplied units × landing price)</span><span id="solar_energy"></span></div>
+        <div class="line"><span>Fixed charge (contract demand × MPEB rate)</span><span id="solar_fixed"></span></div>
+        <div class="line"><span>Electricity duty</span><span id="solar_ed"></span></div>
+        <div class="line"><span>Extra charges</span><span id="solar_extra"></span></div>
+        <div class="line total"><span>Total Solar Bill</span><span id="solar_total"></span></div>
+      </div>
+
+      <div class="bill-card shortfall">
+        <div class="bill-head"><span class="bill-name">Shortfall / Grid Top-up Bill</span><span class="chip shortfall" id="shortfall_chip">When solar generation falls short</span></div>
+        <div class="line"><span>Shortfall units (contracted solar not covered by generation/bank)</span><span id="shortfall_units_line"></span></div>
+        <div class="line"><span>Energy charges (shortfall units × govt tariff)</span><span id="shortfall_energy"></span></div>
+        <div class="line"><span>FPPAS</span><span id="shortfall_fppas"></span></div>
+        <div class="line"><span>Electricity duty</span><span id="shortfall_ed"></span></div>
+        <div class="line total"><span>Total Shortfall Bill</span><span id="shortfall_total"></span></div>
+        <div class="stub-note" style="margin:8px 0 0;">This is the part of this consumer's contracted solar units that the plant couldn't supply this month (low generation + empty bank) — billed at the government tariff instead of vanishing from the total.</div>
+      </div>
+
+      <div class="bill-card gov">
+        <div class="bill-head"><span class="bill-name">Government Bill</span><span class="chip gov">Peak-hour only, 5–10PM</span></div>
+        <div class="line"><span>Energy charges (peak units × tariff)</span><span id="gov_energy"></span></div>
+        <div class="line"><span>FPPAS</span><span id="gov_fppas"></span></div>
+        <div class="line"><span>Electricity duty</span><span id="gov_ed"></span></div>
+        <div class="line"><span>Extra charges</span><span id="gov_extra"></span></div>
+        <div class="line total"><span>Total Government Bill</span><span id="gov_total"></span></div>
+      </div>
+
+      <div class="bill-card combo">
+        <div class="bill-head"><span class="bill-name">Total Payable After Solarization</span><span class="chip combo">Solar + Shortfall + Govt (peak)</span></div>
+        <div class="line"><span>Solar bill</span><span id="combo_solar"></span></div>
+        <div class="line"><span>+ Shortfall / grid top-up bill</span><span id="combo_shortfall"></span></div>
+        <div class="line"><span>+ Government bill (peak-hour)</span><span id="combo_gov"></span></div>
+        <div class="line total"><span>Total Payable (After Solarization)</span><span id="combo_total"></span></div>
+      </div>
+
+      <div class="savings-strip">
+        <div class="period-label">Selected month</div>
+        <div class="row">
+          <div class="item"><div class="k">OG bill (before)</div><div class="v" id="sav_m_og"></div></div>
+          <div class="item"><div class="k">Payable after solar</div><div class="v spend" id="sav_m_after"></div></div>
+          <div class="item"><div class="k">This month's savings</div><div class="v save" id="sav_m_diff"></div></div>
+          <div class="item"><div class="k">Savings %</div><div class="v save" id="sav_m_pct"></div></div>
+        </div>
+        <div class="divider"></div>
+        <div class="period-label">True Annual (sum of all 12 real months — see table below)</div>
+        <div class="row">
+          <div class="item"><div class="k">OG bill (before)</div><div class="v" id="sav_a_og"></div></div>
+          <div class="item"><div class="k">Payable after solar</div><div class="v spend" id="sav_a_after"></div></div>
+          <div class="item"><div class="k">Annual savings</div><div class="v save" id="sav_a_diff"></div></div>
+          <div class="item"><div class="k">Savings %</div><div class="v save" id="sav_a_pct"></div></div>
+        </div>
+      </div>
+
+      <div class="perf" style="margin-top:22px;"><span class="dot"></span><span class="dash"></span><span class="tag">BANKING — SELECTED MONTH SNAPSHOT</span><span class="dash"></span><span class="dot"></span></div>
+
+      <div class="bill-card bank">
+        <div class="bill-head"><span class="bill-name">Banking — Selected Month (whole plant)</span><span class="chip bank" id="bank_status_chip">Surplus</span></div>
+        <div class="line"><span>Net generation (GSA gross × (1 − MPEB%))</span><span id="bank_netgen"></span></div>
+        <div class="line"><span>Contracted units (ALL consumers, plant total)</span><span id="bank_contracted"></span></div>
+        <div class="line"><span>Opening bank balance carried into this month</span><span id="bank_opening"></span></div>
+        <div class="line"><span>Plant government units needed (shortfall)</span><span id="bank_gov_needed"></span></div>
+        <div class="line"><span>Banked this month (surplus × withdrawal factor)</span><span id="bank_banked_month"></span></div>
+        <div class="line total"><span>Closing Bank Balance (after this month)</span><span id="bank_closing"></span></div>
+      </div>
+
+      <div class="bill-card bank-settle">
+        <div class="bill-head"><span class="bill-name">This Consumer's Share</span><span class="chip bank" id="bank_share_chip">—</span></div>
+        <div class="line"><span>This consumer's monthly units ÷ plant total</span><span id="bank_share_pct"></span></div>
+        <div class="line"><span>Gov units allocated to this consumer</span><span id="bank_gov_share"></span></div>
+        <div class="line total"><span>Solar units actually supplied to this consumer</span><span id="bank_solar_supplied"></span></div>
+      </div>
+
+      <div class="stub-note" style="margin-top:6px;">Banking revenue is <b>not</b> paid out every month — the discom settles it once a year on whatever units are still sitting in the bank on 31-Mar, split across consumers by their unit share. See the Annual Total row in the 12-month table below and the per-consumer summary further down.</div>
+    </div>
+
+  </div>
+
+  <!-- ============ MONTHWISE TABLE (real 12-month simulation, selected consumer) ============ -->
+  <h2 class="sec-title">12-Month Simulation (Apr → Mar) — Selected Consumer</h2>
+  <div class="sec-note">Each row is its own month: generation comes from the GSA profile for that month, the shared plant bank balance carries forward from the row above (clamped at ≥ 0), and this consumer's bills/revenue/expense/profit are computed fresh for that month from their share of the plant. The Annual Total row is the real sum of these 12 rows — not one month multiplied by 12.</div>
+  <div class="legend">
+    <span><i class="surplus"></i> Surplus month — generation covers demand, extra gets banked</span>
+    <span><i class="deficit-bank"></i> Deficit covered from bank — no government units drawn</span>
+    <span><i class="deficit-gov"></i> Deficit exceeds bank — government (grid) units drawn, billed as Shortfall Bill</span>
+  </div>
+  <div class="table-wrap">
+    <table class="mw" id="monthTable">
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th>Gross Gen (u)</th>
+          <th>Net Gen (u)</th>
+          <th>Bank Status</th>
+          <th>Opening Bank</th>
+          <th>Plant Gov Units</th>
+          <th>Banked (Plant)</th>
+          <th>Closing Bank</th>
+          <th>My Gov Share (u)</th>
+          <th>My Solar Supplied (u)</th>
+          <th>OG Bill</th>
+          <th>Solar Bill</th>
+          <th>Shortfall Bill</th>
+          <th>Gov Bill</th>
+          <th>Payable After Solar</th>
+          <th>Saving</th>
+          <th>Saving %</th>
+          <th>Solar Revenue</th>
+          <th>Expense (EMI+O&amp;M)</th>
+          <th>Profit</th>
+        </tr>
+      </thead>
+      <tbody id="monthTableBody"></tbody>
+      <tfoot id="monthTableFoot"></tfoot>
+    </table>
+  </div>
+
+  <!-- ============ ALL-CONSUMERS ANNUAL SUMMARY (NEW) ============ -->
+  <h2 class="sec-title">All Consumers — Annual Summary</h2>
+  <div class="sec-note">Every consumer added above, with their own annual consumption, savings and PPA revenue — computed from the same 12-month plant simulation, split by each consumer's unit share. Bottom row is the plant-wide total.</div>
+  <div class="table-wrap">
+    <table class="mw" id="summaryTable">
+      <thead>
+        <tr>
+          <th>Consumer</th>
+          <th>Category</th>
+          <th>Monthly Units (contracted)</th>
+          <th>Annual Solar Supplied</th>
+          <th>Annual OG Bill</th>
+          <th>Annual Payable After Solar</th>
+          <th>Annual Saving</th>
+          <th>Saving %</th>
+          <th>Annual PPA Revenue</th>
+          <th>Bank Settlement Share</th>
+          <th>Annual Expense</th>
+          <th>Annual Profit</th>
+        </tr>
+      </thead>
+      <tbody id="summaryTableBody"></tbody>
+      <tfoot id="summaryTableFoot"></tfoot>
+    </table>
+  </div>
+
+  <!-- ============ PLANT FINANCIALS + EMI CALCULATOR ============ -->
+  <h2 class="sec-title">Plant Financials &amp; EMI</h2>
+  <div class="sec-note">EMI and O&amp;M below are PLANT totals — each consumer's expense share is computed from their unit ratio, exactly like <code>SolarPlant.run()</code>. Revenue/profit totals here are summed across every consumer above; see the table above for each consumer's individual figures.</div>
+
+  <div class="panel-row">
+
+    <!-- ---- financials ---- -->
+    <div class="panel">
+      <h2 class="sec-title" style="margin-top:0;padding-top:0;border-top:none;">Plant-Wide Revenue, Expenses &amp; Profit</h2>
+      <div class="two-col">
+        <div class="field-row">
+          <label>Plant total EMI <span class="unit">Rs/mo</span></label>
+          <input type="number" id="emiMonthly" value="45000" step="100">
+        </div>
+        <div class="field-row">
+          <label>Plant total O&amp;M <span class="unit">Rs/mo</span></label>
+          <input type="number" id="omMonthly" value="8000" step="100">
+        </div>
+      </div>
+      <div class="stat-grid three-col">
+        <div class="stat"><div class="k">Solar revenue (true annual, all consumers)</div><div class="v" id="fin_revenue_a"></div>
+          <div class="sub-v">sum of 12 months × every consumer</div></div>
+        <div class="stat"><div class="k">Bank settlement (annual, once, all consumers)</div><div class="v" id="fin_bank_revenue_a"></div>
+          <div class="sub-v">final lapsed bank × settlement rate</div></div>
+        <div class="stat"><div class="k">Total revenue (true annual)</div><div class="v" id="fin_total_revenue_a"></div></div>
+        <div class="stat"><div class="k">Total expense (true annual)</div><div class="v" id="fin_expense_a"></div>
+          <div class="sub-v">(EMI + O&amp;M) × 12</div></div>
+        <div class="stat"><div class="k">Profit (true annual, all consumers)</div><div class="v" id="fin_profit_a"></div></div>
+        <div class="stat"><div class="k">Total consumption (annual, all consumers)</div><div class="v" id="fin_total_units_a"></div>
+          <div class="sub-v">sum of contracted solar units × 12</div></div>
+      </div>
+    </div>
+
+    <!-- ---- EMI calculator ---- -->
+    <div class="panel">
+      <h2 class="sec-title" style="margin-top:0;padding-top:0;border-top:none;">EMI Calculator</h2>
+      <div class="three-col">
+        <div class="field-row">
+          <label>Project cost <span class="unit">Rs</span></label>
+          <input type="number" id="emiProjectCost" value="25000000" step="1000">
+        </div>
+        <div class="field-row">
+          <label>Tenure <span class="unit">years</span></label>
+          <input type="number" id="emiTenure" value="5" step="1" min="1">
+        </div>
+        <div class="field-row">
+          <label>Interest rate <span class="unit">%/yr</span></label>
+          <input type="number" id="emiRate" value="10.5" step="0.1">
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">EMI</div><div class="v" id="emi_result">₹0/mo</div></div>
+        <div class="stat"><div class="k">Total interest</div><div class="v" id="emi_interest"></div></div>
+        <div class="stat"><div class="k">Total payment</div><div class="v" id="emi_total"></div></div>
+        <div class="stat"><div class="k">Tenure (months)</div><div class="v" id="emi_months"></div></div>
+      </div>
+      <button class="btn" id="useEmiBtn" type="button">Use this EMI in Plant Financials →</button>
+    </div>
+
+  </div>
+
+  <!-- ============ CLIENT PROPOSAL GENERATOR (NEW) ============ -->
+  <h2 class="sec-title">Client Proposal Generator</h2>
+  <div class="sec-note">Builds a 22-slide PPTX + PDF + JSON proposal for the <b>currently selected consumer</b> above, using the exact figures already computed on this page (nothing is recalculated on the server). Fields left blank are shown as "Not available" in the proposal instead of being guessed.</div>
+
+  <div class="panel">
+    <h2 class="sec-title" style="margin-top:0;padding-top:0;border-top:none;">Client &amp; Contract Details</h2>
+    <div class="three-col">
+      <div class="field-row">
+        <label>Client / company being proposed to *</label>
+        <input type="text" id="propClientName" placeholder="e.g. Shree Industries">
+      </div>
+      <div class="field-row">
+        <label>Client type</label>
+        <select id="propClientType">
+          <option value="">— Select —</option>
+          <option>Government Department</option>
+          <option>Nagar Palika / Nagar Nigam</option>
+          <option>Government College</option>
+          <option>Private College</option>
+          <option>Hospital</option>
+          <option>Factory / Industrial</option>
+          <option>Commercial Business</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label>Location</label>
+        <input type="text" id="propLocation" placeholder="e.g. Indore, Madhya Pradesh">
+      </div>
+      <div class="field-row">
+        <label>Contact person</label>
+        <input type="text" id="propContactPerson" placeholder="e.g. Rajesh Kumar">
+      </div>
+      <div class="field-row">
+        <label>Designation</label>
+        <input type="text" id="propDesignation" placeholder="e.g. Plant Head">
+      </div>
+      <div class="field-row">
+        <label>Email</label>
+        <input type="email" id="propEmail" placeholder="name@example.com">
+      </div>
+      <div class="field-row">
+        <label>Phone</label>
+        <input type="text" id="propPhone" placeholder="+91 ...">
+      </div>
+      <div class="field-row">
+        <label>Proposal date</label>
+        <input type="date" id="propDate">
+      </div>
+      <div class="field-row">
+        <label>Your company name (branding)</label>
+        <input type="text" id="propCompanyName" placeholder="Your Solar Company Pvt Ltd">
+      </div>
+      <div class="field-row">
+        <label>Contract period <span class="unit">years</span></label>
+        <input type="number" id="propContractYears" value="15" min="0" step="1">
+      </div>
+      <div class="field-row">
+        <label>CO₂ emission factor <span class="unit">kg/unit, optional</span></label>
+        <input type="number" id="propCo2Factor" placeholder="leave blank if unknown" step="0.01" min="0">
+      </div>
+      <div class="field-row">
+        <label>Generation degradation <span class="unit">%/yr, optional</span></label>
+        <input type="number" id="propDegradation" placeholder="e.g. 0.5" step="0.1" min="0">
+      </div>
+    </div>
+    <div class="stub-note" style="margin-top:6px;">All numeric assumptions above (tariffs, charges, capacity, etc.) are taken from the calculator panels further up this page for the selected consumer — change them there and they flow into the proposal automatically.</div>
+
+    <button class="btn" id="generateProposalBtn" type="button" style="margin-top:14px;">Generate Client Proposal</button>
+
+    <div id="proposalProgress" style="display:none;margin-top:16px;">
+      <div class="stub-note" id="pp_client">&#9744; Client data</div>
+      <div class="stub-note" id="pp_calc">&#9744; Calculations</div>
+      <div class="stub-note" id="pp_charts">&#9744; Charts</div>
+      <div class="stub-note" id="pp_pptx">&#9744; Presentation</div>
+      <div class="stub-note" id="pp_pdf">&#9744; PDF</div>
+    </div>
+
+    <div id="proposalError" style="display:none;margin-top:12px;color:#b3261e;font-weight:600;"></div>
+
+    <div id="proposalDownloads" style="display:none;margin-top:16px;">
+      <a class="btn" id="dl_pptx" href="#" target="_blank" style="margin-right:8px;">Download PPTX</a>
+      <a class="btn" id="dl_pdf" href="#" target="_blank" style="margin-right:8px;">Download PDF</a>
+      <a class="btn" id="dl_json" href="#" target="_blank">Download Data (JSON)</a>
+      <div class="stub-note" id="pp_method" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <footer>Formulas mirror BillingEngine.solar_bill / gov_bill / og_bill and SolarPlant.run()'s month-by-month loop + EMI/O&amp;M expense logic in solar_core.py, now applied per consumer against a shared plant bank engine. Bank balance is carried forward month-to-month (never negative); banking settlement revenue is recognised once a year on the lapsed closing balance, split across consumers by unit share. All figures in ₹, recalculated live.</footer>
+</div>
+
+<script>
+function fmt(n){ if(isNaN(n)) n = 0; return '₹' + n.toLocaleString('en-IN', {maximumFractionDigits:0}); }
+function fmtU(n){ if(isNaN(n)) n = 0; return n.toLocaleString('en-IN', {maximumFractionDigits:1}); }
+function pulse(el){ if(!el) return; el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); setTimeout(()=>el.classList.remove('pulse'), 180); }
+function num(id){ const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; }
+function set(id,val,doPulse){ const el=document.getElementById(id); if(!el) return; if(doPulse) pulse(el); el.textContent = fmt(val); }
+
+// Mirrors MPPBTariffConfig.TARIFF / FIXED_CHARGE_RATE in solar_core.py
+const CATEGORY_RATES = {
+  'HV_3.1|11kV': { tariff: 6.34, fixed: 430, label: 'HV 3.1 · 11kV' },
+  'HV_3.1|33kV': { tariff: 6.14, fixed: 389, label: 'HV 3.1 · 33kV' },
+  'HV_3.2|11kV': { tariff: 6.70, fixed: 510, label: 'HV 3.2 · 11kV' },
+  'HV_3.2|33kV': { tariff: 6.50, fixed: 480, label: 'HV 3.2 · 33kV' },
+  'LV_4.1|Rural': { tariff: 7.05, fixed: 245, label: 'LV 4.1 · Rural' },
+  'LV_4.1|Urban': { tariff: 7.15, fixed: 320, label: 'LV 4.1 · Urban' },
+};
+
+// Mirrors MONTHS / DAYS_IN_MONTH / GSA_DAILY_GENERATION / get_monthly_generation in solar_core.py
+const MONTHS = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
+const DAYS_IN_MONTH = [30,31,30,31,31,30,31,30,31,31,28,31];
+const GSA_DAILY_GENERATION = {
+  500:  [2588,2369,1866,1344,1431,1930,2416,2364,2334,2396,2654,2715],
+  1000: [5176,4739,3733,2687,2862,3860,4833,4728,4667,4792,5307,5429],
+  1500: [7791,7153,5634,4047,4268,5834,7317,7109,6984,7200,7974,8152],
+};
+// Mirrors get_max_customers() in solar_core.py
+function getMaxCustomers(capacityKw){ return Math.max(1, Math.floor(capacityKw/100)); }
+
+function getMonthlyGeneration(capacityKw, monthIdx){
+  const daily = GSA_DAILY_GENERATION[capacityKw];
+  return Math.round(daily[monthIdx] * DAYS_IN_MONTH[monthIdx] * 10) / 10;
+}
+function updateGrossGenerationDisplay(){
+  const cap = parseInt(document.getElementById('plantCapacity').value, 10);
+  const m = parseInt(document.getElementById('genMonth').value, 10);
+  const gross = getMonthlyGeneration(cap, m);
+  document.getElementById('grossGenerationDisplay').value = gross.toLocaleString('en-IN', {maximumFractionDigits:1}) + '  (' + MONTHS[m] + ', ' + cap + ' kW)';
+  return gross;
+}
+
+// ---------------- CUSTOMERS STATE ----------------
+let customers = [];
+let nextId = 1;
+let selectedCustomerId = null;
+
+function addSampleCustomers(){
+  customers.push({ id: nextId++, name: 'Shree Industries', categoryKey: 'HV_3.1|33kV', contractLoad: 500, isCaptive: false, solarUnits: 12000, peakUnits: 2500 });
+  customers.push({ id: nextId++, name: 'Om Textiles', categoryKey: 'HV_3.1|11kV', contractLoad: 300, isCaptive: true, solarUnits: 8000, peakUnits: 1600 });
+  selectedCustomerId = customers[0].id;
+}
+
+function totalContractedUnits(){ return customers.reduce((s,c)=>s+c.solarUnits,0); }
+function totalPeakUnits(){ return customers.reduce((s,c)=>s+c.peakUnits,0); }
+
+function renderCustomerList(){
+  const list = document.getElementById('custList');
+  if(customers.length === 0){
+    list.innerHTML = '<div class="empty-note">No consumers added yet — use the form above.</div>';
+  } else {
+    list.innerHTML = customers.map(c => {
+      const rates = CATEGORY_RATES[c.categoryKey];
+      return `
+        <div class="cust-card">
+          <button class="rm" data-id="${c.id}" title="Remove">×</button>
+          <div class="nm">${c.name || ('Consumer #'+c.id)}</div>
+          <div class="meta-line">
+            ${rates.label}<br>
+            Load ${c.contractLoad} kVA · ${fmtU(c.solarUnits)} u/mo solar · ${fmtU(c.peakUnits)} u/mo peak
+          </div>
+          <span class="badge ${c.isCaptive?'captive':''}">${c.isCaptive ? 'Captive' : 'Third Party'}</span>
+        </div>`;
+    }).join('');
+    list.querySelectorAll('.rm').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const id = parseInt(btn.dataset.id,10);
+        customers = customers.filter(c=>c.id!==id);
+        if(selectedCustomerId === id){ selectedCustomerId = customers.length ? customers[0].id : null; }
+        renderCustomerList(); renderCustomerSelect(); recalcAll();
+      });
+    });
+  }
+
+  document.getElementById('tot_count').textContent = customers.length;
+  document.getElementById('tot_units').textContent = fmtU(totalContractedUnits()) + ' u/mo';
+  document.getElementById('tot_peak').textContent = fmtU(totalPeakUnits()) + ' u/mo';
+  const cap = parseInt(document.getElementById('plantCapacity').value, 10);
+  document.getElementById('tot_maxcust').textContent = getMaxCustomers(cap) + ' consumers (' + cap + ' kW plant)';
+  document.getElementById('plantContractedUnits').value = totalContractedUnits();
+}
+
+function renderCustomerSelect(){
+  const sel = document.getElementById('customerSelect');
+  sel.innerHTML = customers.map(c => `<option value="${c.id}">${c.name || ('Consumer #'+c.id)}</option>`).join('');
+  if(selectedCustomerId && customers.some(c=>c.id===selectedCustomerId)){
+    sel.value = selectedCustomerId;
+  } else if(customers.length){
+    selectedCustomerId = customers[0].id;
+    sel.value = selectedCustomerId;
+  }
+}
+
+document.getElementById('addCustomerBtn').addEventListener('click', ()=>{
+  const name = document.getElementById('newName').value.trim();
+  const categoryKey = document.getElementById('newCategory').value;
+  const contractLoad = num('newContractLoad');
+  const solarUnits = num('newSolarUnits');
+  const peakUnits = num('newPeakUnits');
+  const isCaptive = document.getElementById('newCaptive').checked;
+  if(solarUnits <= 0){ alert('Solar units must be greater than 0.'); return; }
+
+  const cap = parseInt(document.getElementById('plantCapacity').value, 10);
+  if(customers.length >= getMaxCustomers(cap)){
+    if(!confirm('This plant (' + cap + ' kW) normally allows a maximum of ' + getMaxCustomers(cap) + ' consumer(s). Add anyway?')) return;
+  }
+
+  const c = { id: nextId++, name: name || ('Consumer #'+nextId), categoryKey, contractLoad, isCaptive, solarUnits, peakUnits };
+  customers.push(c);
+  selectedCustomerId = c.id;
+
+  document.getElementById('newName').value = '';
+  renderCustomerList(); renderCustomerSelect(); recalcAll();
+});
+
+document.getElementById('customerSelect').addEventListener('change', (e)=>{
+  selectedCustomerId = parseInt(e.target.value, 10);
+  recalcAll();
+});
+
+function getSelectedCustomer(){
+  return customers.find(c=>c.id===selectedCustomerId) || null;
+}
+
+// ---------------- helper: compute one month's bill set for a given consumer ----------------
+function computeMonthBills(inputs, mySolarSupplied, govUnitsShare){
+  const {contractLoad, solarUnits, peakUnits, govTariff, mpebRate, fppasPct, edPct,
+         solarPpa, wheeling, transmission, css, addlSurcharge, extraGov, extraOg, extraSolar} = inputs;
+
+  const fixedCharge = contractLoad * mpebRate;
+
+  // OG Bill (baseline, before solarization) -- constant each month since consumption is constant
+  const ogUnits = solarUnits + peakUnits;
+  const ogEnergy = ogUnits * govTariff;
+  const ogFppas = ogEnergy * (fppasPct/100);
+  const ogEd = ogEnergy * (edPct/100);
+  const ogTotal = ogEnergy + fixedCharge + ogFppas + ogEd + extraOg;
+
+  // Solar Bill -- uses this month's share-adjusted supplied units
+  const landing = solarPpa + wheeling + transmission + css + addlSurcharge;
+  const solarEnergy = mySolarSupplied * landing;
+  const solarEd = solarEnergy * (edPct/100);
+  const solarFixed = contractLoad * mpebRate;
+  const solarTotal = solarEnergy + solarFixed + solarEd + extraSolar;
+
+  // Shortfall / grid top-up bill
+  const shortfallEnergy = govUnitsShare * govTariff;
+  const shortfallFppas = shortfallEnergy * (fppasPct/100);
+  const shortfallEd = shortfallEnergy * (edPct/100);
+  const shortfallTotal = shortfallEnergy + shortfallFppas + shortfallEd;
+
+  // Government Bill (peak-hour only) -- constant each month since peak units are constant
+  const govEnergy = peakUnits * govTariff;
+  const govFppas = govEnergy * (fppasPct/100);
+  const govEd = govEnergy * (edPct/100);
+  const govTotal = govEnergy + govFppas + govEd + extraGov;
+
+  const afterTotal = solarTotal + shortfallTotal + govTotal;
+  const solarRevenue = mySolarSupplied * solarPpa;
+
+  return { ogTotal, solarTotal, shortfallTotal, shortfallEnergy, shortfallFppas, shortfallEd,
+           govTotal, afterTotal, landing, solarRevenue };
+}
+
+function buildConsumerInputs(c){
+  const rates = CATEGORY_RATES[c.categoryKey];
+  return {
+    contractLoad: c.contractLoad,
+    isCaptive: c.isCaptive,
+    solarUnits: c.solarUnits,
+    peakUnits: c.peakUnits,
+    govTariff: rates.tariff,
+    mpebRate: rates.fixed,
+    fppasPct: num('fppasPct'),
+    edPct: num('edPct'),
+    solarPpa: num('solarPpa'),
+    wheeling: num('wheeling'),
+    transmission: num('transmission'),
+    css: c.isCaptive ? 0 : num('css'),
+    addlSurcharge: c.isCaptive ? 0 : num('addlSurcharge'),
+    extraGov: num('extraGov'),
+    extraOg: num('extraOg'),
+    extraSolar: num('extraSolar'),
+  };
+}
+
+// ---------------- PLANT-LEVEL 12-MONTH SIMULATION (shared bank, mirrors BankingEngine.process_month) ----------------
+function runPlantSimulation(){
+  const cap = parseInt(document.getElementById('plantCapacity').value, 10);
+  const startMonth = parseInt(document.getElementById('genMonth').value, 10);
+  const deductionPct = num('mpebDeductionPct');
+  const plantContracted = totalContractedUnits();
+  const factor = num('bankWithdrawalFactor');
+
+  let bank = num('bankOpening');
+  const rows = [];
+  for(let i=0;i<12;i++){
+    const m = (startMonth + i) % 12;
+    const gross = getMonthlyGeneration(cap, m);
+    const netGen = gross * (1 - deductionPct/100);
+    const openingThisMonth = bank;
+    let bankedThisMonth = 0;
+    let totalGov = 0;
+
+    if(netGen >= plantContracted){
+      const surplus = netGen - plantContracted;
+      bankedThisMonth = surplus * factor;
+      bank += bankedThisMonth;
+    } else {
+      const deficit = plantContracted - netGen;
+      if(bank >= deficit){
+        bank -= deficit;
+      } else {
+        totalGov = deficit - bank;
+        bank = 0;
+      }
+    }
+    bank = Math.max(0, bank);
+
+    let status = 'surplus';
+    if(netGen < plantContracted){ status = totalGov > 0 ? 'deficit-gov' : 'deficit-bank'; }
+
+    rows.push({ month: MONTHS[m], gross, netGen, status, openingThisMonth, totalGov, bankedThisMonth, closingBank: bank });
+  }
+  return { rows, plantContracted, closingBankFinal: bank };
+}
+
+// ---------------- Per-consumer annual aggregation off the shared plant simulation ----------------
+function runCustomerAnnual(c, plantSim, emiMonthlyTotal, omMonthlyTotal, settleRate){
+  const plantContracted = plantSim.plantContracted;
+  const share = plantContracted > 0 ? (c.solarUnits / plantContracted) : 0;
+  const inputs = buildConsumerInputs(c);
+  const emiShare = emiMonthlyTotal * share;
+  const omShare = omMonthlyTotal * share;
+  const expensePerMonth = emiShare + omShare;
+
+  const rows = [];
+  const totals = {
+    ogTotal:0, solarTotal:0, shortfallTotal:0, govTotal:0, afterTotal:0, saving:0,
+    solarRevenue:0, expense:0, profit:0, govShareUnits:0, solarSuppliedUnits:0,
+  };
+
+  for(const pr of plantSim.rows){
+    const govUnitsShare = pr.totalGov * share;
+    const mySolarSupplied = c.solarUnits - govUnitsShare;
+    const bills = computeMonthBills(inputs, mySolarSupplied, govUnitsShare);
+    const saving = bills.ogTotal - bills.afterTotal;
+    const profit = bills.solarRevenue - expensePerMonth;
+
+    rows.push({
+      month: pr.month, gross: pr.gross, netGen: pr.netGen, status: pr.status,
+      openingThisMonth: pr.openingThisMonth, totalGov: pr.totalGov, bankedThisMonth: pr.bankedThisMonth,
+      closingBank: pr.closingBank, govUnitsShare, mySolarSupplied,
+      ogTotal: bills.ogTotal, solarTotal: bills.solarTotal, shortfallTotal: bills.shortfallTotal,
+      govTotal: bills.govTotal, afterTotal: bills.afterTotal, saving,
+      savingPct: bills.ogTotal ? (saving/bills.ogTotal*100) : 0,
+      solarRevenue: bills.solarRevenue, expense: expensePerMonth, profit,
+    });
+
+    totals.ogTotal += bills.ogTotal;
+    totals.solarTotal += bills.solarTotal;
+    totals.shortfallTotal += bills.shortfallTotal;
+    totals.govTotal += bills.govTotal;
+    totals.afterTotal += bills.afterTotal;
+    totals.saving += saving;
+    totals.solarRevenue += bills.solarRevenue;
+    totals.expense += expensePerMonth;
+    totals.profit += profit;
+    totals.govShareUnits += govUnitsShare;
+    totals.solarSuppliedUnits += mySolarSupplied;
+  }
+
+  totals.savingPct = totals.ogTotal ? (totals.saving/totals.ogTotal*100) : 0;
+  // Bank settlement split proportionally by this consumer's unit share of the plant
+  totals.bankSettlementRevenue = plantSim.closingBankFinal * settleRate * share;
+  totals.totalRevenue = totals.solarRevenue + totals.bankSettlementRevenue;
+  totals.totalProfit = totals.totalRevenue - totals.expense;
+  totals.share = share;
+
+  return { rows, totals };
+}
+
+function renderMonthTable(sim){
+  const tbody = document.getElementById('monthTableBody');
+  const tfoot = document.getElementById('monthTableFoot');
+  const statusLabel = { 'surplus':'Surplus', 'deficit-bank':'Deficit (bank)', 'deficit-gov':'Deficit (grid)' };
+
+  if(sim.rows.length === 0){
+    tbody.innerHTML = '<tr><td colspan="20" style="text-align:center;">Add a consumer to see the simulation.</td></tr>';
+    tfoot.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = sim.rows.map(r => `
+    <tr>
+      <td class="month-cell">${r.month}</td>
+      <td>${fmtU(r.gross)}</td>
+      <td>${fmtU(r.netGen)}</td>
+      <td class="bank-flag ${r.status}">${statusLabel[r.status]}</td>
+      <td>${fmtU(r.openingThisMonth)}</td>
+      <td>${fmtU(r.totalGov)}</td>
+      <td>${fmtU(r.bankedThisMonth)}</td>
+      <td>${fmtU(r.closingBank)}</td>
+      <td>${fmtU(r.govUnitsShare)}</td>
+      <td>${fmtU(r.mySolarSupplied)}</td>
+      <td>${fmt(r.ogTotal)}</td>
+      <td>${fmt(r.solarTotal)}</td>
+      <td>${r.shortfallTotal>0 ? '<span class="save-neg">'+fmt(r.shortfallTotal)+'</span>' : fmt(0)}</td>
+      <td>${fmt(r.govTotal)}</td>
+      <td>${fmt(r.afterTotal)}</td>
+      <td class="${r.saving>=0?'save-pos':'save-neg'}">${r.saving>=0?'':'−'}${fmt(Math.abs(r.saving))}</td>
+      <td class="${r.savingPct>=0?'save-pos':'save-neg'}">${r.savingPct.toFixed(1)}%</td>
+      <td>${fmt(r.solarRevenue)}</td>
+      <td>${fmt(r.expense)}</td>
+      <td class="${r.profit>=0?'save-pos':'save-neg'}">${r.profit>=0?'':'−'}${fmt(Math.abs(r.profit))}</td>
+    </tr>
+  `).join('');
+
+  const t = sim.totals;
+  tfoot.innerHTML = `
+    <tr>
+      <td>Annual Total</td>
+      <td>—</td><td>—</td><td>—</td><td>—</td>
+      <td>${fmtU(t.govShareUnits)}</td>
+      <td>${fmtU(t.solarSuppliedUnits)}</td>
+      <td>—</td>
+      <td>${fmtU(t.govShareUnits)}</td>
+      <td>${fmtU(t.solarSuppliedUnits)}</td>
+      <td>${fmt(t.ogTotal)}</td>
+      <td>${fmt(t.solarTotal)}</td>
+      <td>${fmt(t.shortfallTotal)}</td>
+      <td>${fmt(t.govTotal)}</td>
+      <td>${fmt(t.afterTotal)}</td>
+      <td class="${t.saving>=0?'save-pos':'save-neg'}">${t.saving>=0?'':'−'}${fmt(Math.abs(t.saving))}</td>
+      <td class="${t.savingPct>=0?'save-pos':'save-neg'}">${t.savingPct.toFixed(1)}%</td>
+      <td>${fmt(t.solarRevenue)}</td>
+      <td>${fmt(t.expense)}</td>
+      <td class="${t.totalProfit>=0?'save-pos':'save-neg'}">${t.totalProfit>=0?'':'−'}${fmt(Math.abs(t.totalProfit))}</td>
+    </tr>
+    <tr>
+      <td colspan="20" style="text-align:left;font-weight:400;font-size:10.5px;background:var(--paper-alt);color:var(--ink-soft);">
+        Bank settlement (this consumer's share, once, year-end) = ${fmt(t.bankSettlementRevenue)}
+        · True Total Revenue = ${fmt(t.totalRevenue)} · True Total Profit = ${(t.totalProfit>=0?'':'−') + fmt(Math.abs(t.totalRevenue-t.expense))}
+      </td>
+    </tr>
+  `;
+}
+
+function updateAnnualPanels(sim){
+  const t = sim.totals;
+  set('sav_a_og', t.ogTotal); set('sav_a_after', t.afterTotal);
+  document.getElementById('sav_a_diff').textContent = (t.saving>=0?'':'−') + fmt(Math.abs(t.saving));
+  document.getElementById('sav_a_diff').className = 'v ' + (t.saving>=0?'save':'spend');
+  document.getElementById('sav_a_pct').textContent = t.savingPct.toFixed(1) + '%';
+  document.getElementById('sav_a_pct').className = 'v ' + (t.savingPct>=0?'save':'spend');
+}
+
+// ---------------- ALL-CONSUMERS ANNUAL SUMMARY TABLE ----------------
+function renderSummaryTable(plantSim){
+  const tbody = document.getElementById('summaryTableBody');
+  const tfoot = document.getElementById('summaryTableFoot');
+  const settleRate = num('bankSettlementRate');
+  const emiTotal = num('emiMonthly'), omTotal = num('omMonthly');
+
+  if(customers.length === 0){
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;">No consumers added yet.</td></tr>';
+    tfoot.innerHTML = '';
+    return { grand: null };
+  }
+
+  const grand = {
+    units:0, solarSupplied:0, ogTotal:0, afterTotal:0, saving:0,
+    revenue:0, bankShare:0, expense:0, profit:0,
+  };
+
+  let rowsHtml = '';
+  customers.forEach(c=>{
+    const ann = runCustomerAnnual(c, plantSim, emiTotal, omTotal, settleRate);
+    const t = ann.totals;
+    const rates = CATEGORY_RATES[c.categoryKey];
+    grand.units += c.solarUnits;
+    grand.solarSupplied += t.solarSuppliedUnits;
+    grand.ogTotal += t.ogTotal;
+    grand.afterTotal += t.afterTotal;
+    grand.saving += t.saving;
+    grand.revenue += t.solarRevenue;
+    grand.bankShare += t.bankSettlementRevenue;
+    grand.expense += t.expense;
+    grand.profit += t.totalProfit;
+
+    rowsHtml += `
+      <tr>
+        <td style="text-align:left;">${c.name || ('Consumer #'+c.id)}</td>
+        <td style="text-align:left;">${rates.label}${c.isCaptive?' · Captive':''}</td>
+        <td>${fmtU(c.solarUnits)}</td>
+        <td>${fmtU(t.solarSuppliedUnits)}</td>
+        <td>${fmt(t.ogTotal)}</td>
+        <td>${fmt(t.afterTotal)}</td>
+        <td class="${t.saving>=0?'save-pos':'save-neg'}">${t.saving>=0?'':'−'}${fmt(Math.abs(t.saving))}</td>
+        <td class="${t.savingPct>=0?'save-pos':'save-neg'}">${t.savingPct.toFixed(1)}%</td>
+        <td>${fmt(t.solarRevenue)}</td>
+        <td>${fmt(t.bankSettlementRevenue)}</td>
+        <td>${fmt(t.expense)}</td>
+        <td class="${t.totalProfit>=0?'save-pos':'save-neg'}">${t.totalProfit>=0?'':'−'}${fmt(Math.abs(t.totalProfit))}</td>
+      </tr>`;
+  });
+  tbody.innerHTML = rowsHtml;
+
+  const grandSavingPct = grand.ogTotal ? (grand.saving/grand.ogTotal*100) : 0;
+  tfoot.innerHTML = `
+    <tr>
+      <td>All Consumers (Total)</td>
+      <td>—</td>
+      <td>${fmtU(grand.units)}</td>
+      <td>${fmtU(grand.solarSupplied)}</td>
+      <td>${fmt(grand.ogTotal)}</td>
+      <td>${fmt(grand.afterTotal)}</td>
+      <td class="${grand.saving>=0?'save-pos':'save-neg'}">${grand.saving>=0?'':'−'}${fmt(Math.abs(grand.saving))}</td>
+      <td class="${grandSavingPct>=0?'save-pos':'save-neg'}">${grandSavingPct.toFixed(1)}%</td>
+      <td>${fmt(grand.revenue)}</td>
+      <td>${fmt(grand.bankShare)}</td>
+      <td>${fmt(grand.expense)}</td>
+      <td class="${grand.profit>=0?'save-pos':'save-neg'}">${grand.profit>=0?'':'−'}${fmt(Math.abs(grand.profit))}</td>
+    </tr>
+  `;
+  return { grand };
+}
+
+// ---------------- BANKING SNAPSHOT (selected month, plant-level) ----------------
+function recalcBankingSnapshot(c){
+  const opening = num('bankOpening');
+  const gross = updateGrossGenerationDisplay();
+  const deductionPct = num('mpebDeductionPct');
+  const plantContracted = totalContractedUnits();
+  const myUnits = c ? c.solarUnits : 0;
+  const factor = num('bankWithdrawalFactor');
+
+  const netGen = gross * (1 - deductionPct/100);
+  let bank = opening;
+  let bankedThisMonth = 0;
+  let totalGov = 0;
+
+  if(netGen >= plantContracted){
+    const surplus = netGen - plantContracted;
+    bankedThisMonth = surplus * factor;
+    bank += bankedThisMonth;
+  } else {
+    const deficit = plantContracted - netGen;
+    if(bank >= deficit){
+      bank -= deficit;
+    } else {
+      totalGov = deficit - bank;
+      bank = 0;
+    }
+  }
+  bank = Math.max(0, bank);
+
+  const share = plantContracted > 0 ? (myUnits / plantContracted) : 0;
+  const govUnitsShare = totalGov * share;
+  const mySolarSupplied = myUnits - govUnitsShare;
+
+  const statusChip = document.getElementById('bank_status_chip');
+  statusChip.textContent = netGen >= plantContracted ? 'Surplus — banking' : (totalGov > 0 ? 'Deficit — gov units drawn' : 'Deficit — bank covered');
+  document.getElementById('bank_share_chip').textContent = (share*100).toFixed(1) + '% of plant';
+
+  document.getElementById('bank_netgen').textContent = fmtU(netGen) + ' units';
+  document.getElementById('bank_contracted').textContent = plantContracted.toLocaleString('en-IN') + ' units';
+  document.getElementById('bank_opening').textContent = opening.toLocaleString('en-IN') + ' units';
+  document.getElementById('bank_gov_needed').textContent = fmtU(totalGov) + ' units';
+  document.getElementById('bank_banked_month').textContent = fmtU(bankedThisMonth) + ' units';
+  document.getElementById('bank_closing').textContent = fmtU(bank) + ' units';
+
+  document.getElementById('bank_share_pct').textContent = myUnits.toLocaleString('en-IN') + ' ÷ ' + plantContracted.toLocaleString('en-IN') + ' = ' + (share*100).toFixed(2) + '%';
+  document.getElementById('bank_gov_share').textContent = fmtU(govUnitsShare) + ' units';
+  document.getElementById('bank_solar_supplied').textContent = fmtU(mySolarSupplied) + ' units';
+
+  return { mySolarSupplied, govUnitsShare };
+}
+
+// ---------------- BILLS -- SELECTED CONSUMER, SELECTED MONTH (snapshot cards) ----------------
+function recalcSelectedMonthBills(){
+  const c = getSelectedCustomer();
+  const banking = recalcBankingSnapshot(c);
+  if(!c){
+    ['og_energy','og_fixed','og_fppas','og_ed','og_extra','og_total','solar_energy','solar_fixed','solar_ed',
+     'solar_extra','solar_total','shortfall_energy','shortfall_fppas','shortfall_ed','shortfall_total',
+     'gov_energy','gov_fppas','gov_ed','gov_extra','gov_total','combo_solar','combo_shortfall','combo_gov','combo_total',
+     'sav_m_og','sav_m_after'].forEach(id=>set(id,0));
+    document.getElementById('shortfall_units_line').textContent = '0 units';
+    return;
+  }
+  const inputs = buildConsumerInputs(c);
+  const bills = computeMonthBills(inputs, banking.mySolarSupplied, banking.govUnitsShare);
+
+  const fixedCharge = inputs.contractLoad * inputs.mpebRate;
+  const ogUnits = inputs.solarUnits + inputs.peakUnits;
+  const ogEnergy = ogUnits * inputs.govTariff;
+  const ogFppas = ogEnergy * (inputs.fppasPct/100);
+  const ogEd = ogEnergy * (inputs.edPct/100);
+
+  const solarEnergy = banking.mySolarSupplied * bills.landing;
+  const solarEd = solarEnergy * (inputs.edPct/100);
+
+  const govEnergy = inputs.peakUnits * inputs.govTariff;
+  const govFppas = govEnergy * (inputs.fppasPct/100);
+  const govEd = govEnergy * (inputs.edPct/100);
+
+  set('og_energy', ogEnergy); set('og_fixed', fixedCharge); set('og_fppas', ogFppas);
+  set('og_ed', ogEd); set('og_extra', inputs.extraOg); set('og_total', bills.ogTotal, true);
+
+  set('solar_energy', solarEnergy); set('solar_fixed', fixedCharge); set('solar_ed', solarEd);
+  set('solar_extra', inputs.extraSolar); set('solar_total', bills.solarTotal, true);
+
+  document.getElementById('shortfall_units_line').textContent = fmtU(banking.govUnitsShare) + ' units';
+  set('shortfall_energy', bills.shortfallEnergy); set('shortfall_fppas', bills.shortfallFppas);
+  set('shortfall_ed', bills.shortfallEd); set('shortfall_total', bills.shortfallTotal, true);
+  document.getElementById('shortfall_chip').textContent = banking.govUnitsShare > 0 ? 'Shortfall this month' : 'None this month';
+
+  set('gov_energy', govEnergy); set('gov_fppas', govFppas);
+  set('gov_ed', govEd); set('gov_extra', inputs.extraGov); set('gov_total', bills.govTotal, true);
+
+  document.getElementById('solar_landing_chip').textContent = 'Landing ₹' + bills.landing.toFixed(2) + '/unit';
+
+  set('combo_solar', bills.solarTotal); set('combo_shortfall', bills.shortfallTotal);
+  set('combo_gov', bills.govTotal); set('combo_total', bills.afterTotal, true);
+
+  const diffM = bills.ogTotal - bills.afterTotal;
+  const pctM = bills.ogTotal ? (diffM/bills.ogTotal*100) : 0;
+  set('sav_m_og', bills.ogTotal); set('sav_m_after', bills.afterTotal);
+  document.getElementById('sav_m_diff').textContent = (diffM>=0?'':'−') + fmt(Math.abs(diffM));
+  document.getElementById('sav_m_diff').className = 'v ' + (diffM>=0?'save':'spend');
+  document.getElementById('sav_m_pct').textContent = pctM.toFixed(1) + '%';
+  document.getElementById('sav_m_pct').className = 'v ' + (pctM>=0?'save':'spend');
+}
+
+// ---------------- MASTER RECALC ----------------
+function recalcAll(){
+  recalcSelectedMonthBills();
+
+  const plantSim = runPlantSimulation();
+  const c = getSelectedCustomer();
+  const settleRate = num('bankSettlementRate');
+  const emiTotal = num('emiMonthly'), omTotal = num('omMonthly');
+
+  if(c){
+    const ann = runCustomerAnnual(c, plantSim, emiTotal, omTotal, settleRate);
+    renderMonthTable(ann);
+    updateAnnualPanels(ann);
+  } else {
+    renderMonthTable({ rows: [], totals: {} });
+  }
+
+  const { grand } = renderSummaryTable(plantSim);
+
+  if(grand){
+    document.getElementById('fin_revenue_a').textContent = fmt(grand.revenue);
+    document.getElementById('fin_bank_revenue_a').textContent = fmt(grand.bankShare);
+    document.getElementById('fin_total_revenue_a').textContent = fmt(grand.revenue + grand.bankShare);
+    document.getElementById('fin_expense_a').textContent = fmt(grand.expense);
+    const paEl = document.getElementById('fin_profit_a');
+    paEl.textContent = (grand.profit>=0?'':'−') + fmt(Math.abs(grand.profit));
+    paEl.className = 'v ' + (grand.profit>=0?'profit-pos':'profit-neg');
+    document.getElementById('fin_total_units_a').textContent = fmtU(grand.units*12) + ' u/yr';
+  } else {
+    ['fin_revenue_a','fin_bank_revenue_a','fin_total_revenue_a','fin_expense_a','fin_profit_a'].forEach(id=>set(id,0));
+    document.getElementById('fin_total_units_a').textContent = '0 u/yr';
+  }
+}
+
+// ---------------- EMI CALCULATOR ----------------
+function recalcEmi(){
+  const p = num('emiProjectCost');
+  const years = num('emiTenure');
+  const ratePct = num('emiRate');
+  const n = Math.max(1, Math.round(years*12));
+  const r = (ratePct/12/100);
+
+  let emi;
+  if(r === 0){ emi = p/n; } else { emi = p*r*Math.pow(1+r,n)/(Math.pow(1+r,n)-1); }
+  const totalPayment = emi*n;
+  const totalInterest = totalPayment - p;
+
+  document.getElementById('emi_result').textContent = fmt(emi) + '/mo';
+  document.getElementById('emi_interest').textContent = fmt(totalInterest);
+  document.getElementById('emi_total').textContent = fmt(totalPayment);
+  document.getElementById('emi_months').textContent = n;
+
+  return emi;
+}
+
+document.getElementById('useEmiBtn').addEventListener('click', ()=>{
+  const emi = recalcEmi();
+  document.getElementById('emiMonthly').value = Math.round(emi);
+  recalcAll();
+});
+
+document.querySelectorAll('.stub input, .stub select, #emiMonthly, #omMonthly').forEach(el=>{
+  el.addEventListener('input', ()=>{ renderCustomerList(); recalcAll(); });
+  el.addEventListener('change', ()=>{ renderCustomerList(); recalcAll(); });
+});
+document.querySelectorAll('#emiProjectCost, #emiTenure, #emiRate').forEach(el=>{
+  el.addEventListener('input', recalcEmi);
+  el.addEventListener('change', recalcEmi);
+});
+
+addSampleCustomers();
+renderCustomerList();
+renderCustomerSelect();
+recalcEmi();
+recalcAll();
+
+// ============================================================================
+// CLIENT PROPOSAL GENERATOR
+// -- Gathers numbers that ARE ALREADY COMPUTED by the functions above
+//    (runPlantSimulation / runCustomerAnnual / buildConsumerInputs) and posts
+//    them to the backend, which only formats them into PPTX/PDF/JSON. No
+//    calculation is duplicated here or on the server -- same source of truth.
+// ============================================================================
+(function(){
+  const dateInput = document.getElementById('propDate');
+  if(dateInput && !dateInput.value){
+    dateInput.value = new Date().toISOString().slice(0,10);
+  }
+
+  function optNum(id){
+    const el = document.getElementById(id);
+    if(!el || el.value === '' || el.value === null) return null;
+    const v = parseFloat(el.value);
+    return isNaN(v) ? null : v;
+  }
+  function optTxt(id){
+    const el = document.getElementById(id);
+    const v = el ? el.value.trim() : '';
+    return v === '' ? null : v;
+  }
+  function fmtDateForProposal(iso){
+    if(!iso) return null;
+    const d = new Date(iso + 'T00:00:00');
+    if(isNaN(d)) return iso;
+    return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+  }
+
+  function gatherProposalPayload(){
+    const c = getSelectedCustomer();
+    if(!c){
+      return { error: 'Select or add a consumer above before generating a proposal.' };
+    }
+
+    const inputs = buildConsumerInputs(c);
+    const plantSim = runPlantSimulation();
+    const emiTotal = num('emiMonthly'), omTotal = num('omMonthly');
+    const settleRate = num('bankSettlementRate');
+    const ann = runCustomerAnnual(c, plantSim, emiTotal, omTotal, settleRate);
+    const t = ann.totals;
+
+    const monthlyConsumption = inputs.solarUnits + inputs.peakUnits;
+    const fixedCharge = inputs.contractLoad * inputs.mpebRate;
+    const ogEnergy = monthlyConsumption * inputs.govTariff;
+    const ogFppas = ogEnergy * (inputs.fppasPct/100);
+    const ogEd = ogEnergy * (inputs.edPct/100);
+    const landingPrice = inputs.solarPpa + inputs.wheeling + inputs.transmission + inputs.css + inputs.addlSurcharge;
+
+    const contractYears = optNum('propContractYears');
+    const co2Factor = optNum('propCo2Factor');
+    const solarSuppliedAnnual = t.solarSuppliedUnits; // units actually delivered to this consumer, annual
+    const co2Reduction = (co2Factor !== null) ? (co2Factor * solarSuppliedAnnual) : null;
+
+    const plantCapacityKw = parseInt(document.getElementById('plantCapacity').value, 10);
+    const monthlyGeneration = plantSim.rows.map(r => Math.round(r.netGen * 10) / 10);
+    const expectedAnnualGeneration = monthlyGeneration.reduce((s,v)=>s+v, 0);
+
+    return {
+      client: {
+        client_name: optTxt('propClientName') || c.name,
+        company_name: optTxt('propCompanyName'),
+        client_type: optTxt('propClientType'),
+        location: optTxt('propLocation'),
+        contact_person: optTxt('propContactPerson'),
+        designation: optTxt('propDesignation'),
+        email: optTxt('propEmail'),
+        phone: optTxt('propPhone'),
+        proposal_date: fmtDateForProposal(document.getElementById('propDate').value),
+      },
+      electricity: {
+        sanctioned_load_kw: inputs.contractLoad,
+        contract_demand_kw: inputs.contractLoad,
+        monthly_consumption_kwh: monthlyConsumption,
+        annual_consumption_kwh: monthlyConsumption * 12,
+        current_tariff: inputs.govTariff,
+        electricity_duty: ogEd,
+        fixed_charges: fixedCharge,
+        current_monthly_bill: t.ogTotal / 12,
+        current_annual_cost: t.ogTotal,
+      },
+      ppa: {
+        solar_capacity_kw: plantCapacityKw,
+        ppa_tariff: inputs.solarPpa,
+        contract_period_years: contractYears,
+        expected_annual_generation: expectedAnnualGeneration,
+        generation_degradation: optNum('propDegradation'),
+        transmission_charges: inputs.transmission,
+        wheeling_charges: inputs.wheeling,
+        cross_subsidy_surcharge: inputs.css,
+        additional_surcharge: inputs.addlSurcharge,
+        losses: num('mpebDeductionPct'),
+      },
+      calculations: {
+        current_annual_cost: t.ogTotal,
+        proposed_annual_cost: t.afterTotal,
+        current_monthly_bill: t.ogTotal / 12,
+        proposed_monthly_cost: t.afterTotal / 12,
+        annual_savings: t.saving,
+        monthly_savings: t.saving / 12,
+        savings_percentage: t.savingPct,
+        total_contract_savings: contractYears ? t.saving * contractYears : null,
+        effective_energy_cost: landingPrice,
+        estimated_co2_reduction: co2Reduction,
+      },
+      monthly_generation: monthlyGeneration,
+      metadata: {},
+    };
+  }
+
+  function setStep(id, done){
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.innerHTML = (done ? '&#9745; ' : '&#9744; ') + el.textContent.replace(/^[\u2610\u2611]\s*/, '');
+  }
+
+  const btn = document.getElementById('generateProposalBtn');
+  btn.addEventListener('click', async () => {
+    const progressEl = document.getElementById('proposalProgress');
+    const errorEl = document.getElementById('proposalError');
+    const downloadsEl = document.getElementById('proposalDownloads');
+    errorEl.style.display = 'none';
+    downloadsEl.style.display = 'none';
+    progressEl.style.display = 'block';
+    ['pp_client','pp_calc','pp_charts','pp_pptx','pp_pdf'].forEach(id => setStep(id, false));
+
+    const payload = gatherProposalPayload();
+    if(payload.error){
+      progressEl.style.display = 'none';
+      errorEl.textContent = payload.error;
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    setStep('pp_client', true);
+    setStep('pp_calc', true);
+
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+      const resp = await fetch('/api/generate-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+
+      if(!resp.ok || !data.success){
+        const details = (data.details || []).join(' ');
+        throw new Error((data.error || 'Proposal generation failed.') + (details ? ' ' + details : ''));
+      }
+
+      setStep('pp_charts', true);
+      setStep('pp_pptx', true);
+      setStep('pp_pdf', true);
+
+      document.getElementById('dl_pptx').href = data.pptx_url;
+      document.getElementById('dl_pdf').href = data.pdf_url;
+      document.getElementById('dl_json').href = data.json_url;
+      document.getElementById('pp_method').textContent =
+        data.pdf_method === 'reportlab_fallback'
+          ? 'Note: PDF generated via the fallback engine (LibreOffice unavailable on server) — a summary PDF, not a full slide render. The PPTX has all 22 slides.'
+          : 'PPTX and PDF generated successfully.';
+      downloadsEl.style.display = 'block';
+    } catch (err) {
+      progressEl.style.display = 'none';
+      errorEl.textContent = err.message || 'Something went wrong generating the proposal.';
+      errorEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Generate Client Proposal';
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+Flask
+gunicorn
+python-pptx
+matplotlib
+reportlab
