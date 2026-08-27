@@ -275,6 +275,17 @@
         <span>Captive</span>
         <label class="switch"><input type="checkbox" id="newCaptive"><span class="slider"></span></label>
       </div>
+      <div class="field-row">
+        <label>Original Government Bill</label>
+        <select id="newOriginalBillMode">
+          <option value="calculated" selected>Calculate Original Bill (from units)</option>
+          <option value="direct">Enter Original Bill Directly</option>
+        </select>
+      </div>
+      <div class="field-row" id="originalBillAmountRow" style="display:none;">
+        <label>Original bill amount <span class="unit">₹</span></label>
+        <input type="number" id="newOriginalBillAmount" value="0" min="0" step="1">
+      </div>
       <button class="cust-addbtn" id="addCustomerBtn" type="button">+ Add Consumer</button>
     </div>
 
@@ -403,6 +414,21 @@
         <div class="field-row"><label>Extra — Solar bill <span class="unit">Rs</span></label>
           <input type="number" id="extraSolar" value="0" step="1"></div>
       </details>
+
+      <details class="field-group" open>
+        <summary>SLDC Charge (added to Solar Bill only)</summary>
+        <div class="two-col">
+          <div class="field-row">
+            <label>SLDC charge per day <span class="unit">Rs/day</span></label>
+            <input type="number" id="sldcChargePerDay" value="1000" min="0" step="1">
+          </div>
+          <div class="field-row">
+            <label>Number of days <span class="unit">days</span></label>
+            <input type="number" id="sldcDays" value="30" min="0" step="1">
+          </div>
+        </div>
+        <div class="stub-note" style="margin:2px 0 0;">SLDC Charge = Rate/day × Days. Added only to the Solar Bill — never to the Government or OG/Original bill.</div>
+      </details>
     </div>
 
     <!-- ============ RESULTS / BILL PANEL (drill-down, one consumer at a time) ============ -->
@@ -415,13 +441,14 @@
       </div>
 
       <div class="bill-card og">
-        <div class="bill-head"><span class="bill-name">OG Bill</span><span class="chip og">Before solar · baseline</span></div>
-        <div class="line"><span>Energy charges (units × govt tariff)</span><span id="og_energy"></span></div>
-        <div class="line"><span>Fixed charge (load × MPEB rate)</span><span id="og_fixed"></span></div>
-        <div class="line"><span>FPPAS</span><span id="og_fppas"></span></div>
-        <div class="line"><span>Electricity duty</span><span id="og_ed"></span></div>
-        <div class="line"><span>Extra charges</span><span id="og_extra"></span></div>
-        <div class="line total"><span>Total OG Bill</span><span id="og_total"></span></div>
+        <div class="bill-head"><span class="bill-name">OG Bill / Original Bill</span><span class="chip og" id="og_chip">Before solar · baseline</span></div>
+        <div class="line" id="og_energy_row"><span>Energy charges (units × govt tariff)</span><span id="og_energy"></span></div>
+        <div class="line" id="og_fixed_row"><span>Fixed charge (load × MPEB rate)</span><span id="og_fixed"></span></div>
+        <div class="line" id="og_fppas_row"><span>FPPAS</span><span id="og_fppas"></span></div>
+        <div class="line" id="og_ed_row"><span>Electricity duty</span><span id="og_ed"></span></div>
+        <div class="line" id="og_extra_row"><span>Extra charges</span><span id="og_extra"></span></div>
+        <div class="line" id="og_manual_row" style="display:none;"><span>Original bill (manual entry — baseline only, not added to Final Customer Bill)</span><span></span></div>
+        <div class="line total"><span>Total OG Bill / Original Bill</span><span id="og_total"></span></div>
       </div>
 
       <div class="bill-card solar">
@@ -429,6 +456,7 @@
         <div class="line"><span>Energy charges (share-adjusted supplied units × landing price)</span><span id="solar_energy"></span></div>
         <div class="line"><span>Fixed charge (contract demand × MPEB rate)</span><span id="solar_fixed"></span></div>
         <div class="line"><span>Electricity duty</span><span id="solar_ed"></span></div>
+        <div class="line"><span>SLDC charge (<span id="solar_sldc_meta">₹1,000/day × 30 days</span>)</span><span id="solar_sldc"></span></div>
         <div class="line"><span>Extra charges</span><span id="solar_extra"></span></div>
         <div class="line total"><span>Total Solar Bill</span><span id="solar_total"></span></div>
       </div>
@@ -789,6 +817,7 @@ function renderCustomerList(){
             Load ${c.contractLoad} kVA · ${fmtU(c.solarUnits)} u/mo solar · ${fmtU(c.peakUnits)} u/mo peak
           </div>
           <span class="badge ${c.isCaptive?'captive':''}">${c.isCaptive ? 'Captive' : 'Third Party'}</span>
+          ${c.originalBillMode === 'direct' ? '<span class="badge">Manual Original Bill</span>' : ''}
         </div>`;
     }).join('');
     list.querySelectorAll('.rm').forEach(btn=>{
@@ -830,6 +859,16 @@ function toggleCustomRateFields(){
 document.getElementById('newCategory').addEventListener('change', toggleCustomRateFields);
 toggleCustomRateFields();
 
+// Show/hide the manual Original Bill Amount input when "Enter Original
+// Bill Directly" is picked. Does not affect OG Bill *calculation* logic --
+// only which baseline value the Savings figures use (see computeMonthBills).
+function toggleOriginalBillFields(){
+  const isDirect = document.getElementById('newOriginalBillMode').value === 'direct';
+  document.getElementById('originalBillAmountRow').style.display = isDirect ? '' : 'none';
+}
+document.getElementById('newOriginalBillMode').addEventListener('change', toggleOriginalBillFields);
+toggleOriginalBillFields();
+
 // Returns {tariff, fixed, label} for any customer, whether it's a standard
 // CATEGORY_RATES lookup or an 'OTHER' manual-entry customer with its own
 // customTariff/customFixed stored on the customer object.
@@ -854,13 +893,22 @@ document.getElementById('addCustomerBtn').addEventListener('click', ()=>{
     if(!confirm('This plant (' + cap + ' kW) normally allows a maximum of ' + getMaxCustomers(cap) + ' consumer(s). Add anyway?')) return;
   }
 
-  const c = { id: nextId++, name: name || ('Consumer #'+nextId), categoryKey, contractLoad, isCaptive, solarUnits, peakUnits };
+  const sldcRateCheck = num('sldcChargePerDay'), sldcDaysCheck = num('sldcDays');
+  if(sldcRateCheck < 0 || sldcDaysCheck < 0){ alert('SLDC charge per day and days must be 0 or greater.'); return; }
+
+  const originalBillMode = document.getElementById('newOriginalBillMode').value; // 'calculated' | 'direct'
+  const c = { id: nextId++, name: name || ('Consumer #'+nextId), categoryKey, contractLoad, isCaptive, solarUnits, peakUnits, originalBillMode };
   if(categoryKey === 'OTHER|Manual'){
     const customTariff = num('newCustomTariff');
     const customFixed = num('newCustomFixed');
     if(customTariff <= 0){ alert('Enter a govt. tariff (₹/unit) greater than 0 for manual entry.'); return; }
     c.customTariff = customTariff;
     c.customFixed = customFixed;
+  }
+  if(originalBillMode === 'direct'){
+    const originalBillAmount = num('newOriginalBillAmount');
+    if(originalBillAmount < 0){ alert('Original Bill Amount must be 0 or greater.'); return; }
+    c.originalBillAmount = originalBillAmount;
   }
   customers.push(c);
   selectedCustomerId = c.id;
@@ -881,23 +929,37 @@ function getSelectedCustomer(){
 // ---------------- helper: compute one month's bill set for a given consumer ----------------
 function computeMonthBills(inputs, mySolarSupplied, govUnitsShare){
   const {contractLoad, solarUnits, peakUnits, govTariff, mpebRate, fppasPct, edPct,
-         solarPpa, wheeling, transmission, css, addlSurcharge, extraGov, extraOg, extraSolar} = inputs;
+         solarPpa, wheeling, transmission, css, addlSurcharge, extraGov, extraOg, extraSolar,
+         sldcChargePerDay, sldcDays, originalBillMode, originalBillAmount} = inputs;
 
   const fixedCharge = contractLoad * mpebRate;
 
-  // OG Bill (baseline, before solarization) -- constant each month since consumption is constant
+  // OG Bill (baseline, before solarization) -- constant each month since consumption is constant.
+  // This calculated value is untouched regardless of originalBillMode.
   const ogUnits = solarUnits + peakUnits;
   const ogEnergy = ogUnits * govTariff;
   const ogFppas = ogEnergy * (fppasPct/100);
   const ogEd = ogEnergy * (edPct/100);
-  const ogTotal = ogEnergy + fixedCharge + ogFppas + ogEd + extraOg;
+  const calculatedOgTotal = ogEnergy + fixedCharge + ogFppas + ogEd + extraOg;
+
+  // "Original Bill" used as the Savings baseline: either the calculated OG
+  // Bill above, or (if the user chose "Enter Original Bill Directly") the
+  // exact manually-entered amount. This value is ONLY a baseline -- it is
+  // never added into the Final Customer Bill (see afterTotal below, which
+  // never references ogTotal/originalBillAmount).
+  const usingDirectOriginalBill = (originalBillMode === 'direct') && (originalBillAmount != null);
+  const ogTotal = usingDirectOriginalBill ? originalBillAmount : calculatedOgTotal;
+
+  // SLDC Charge -- Solar-side only, never part of the OG/Original or
+  // Government bill baselines above.
+  const sldcCharge = (sldcChargePerDay || 0) * (sldcDays || 0);
 
   // Solar Bill -- uses this month's share-adjusted supplied units
   const landing = solarPpa + wheeling + transmission + css + addlSurcharge;
   const solarEnergy = mySolarSupplied * landing;
   const solarEd = solarEnergy * (edPct/100);
   const solarFixed = contractLoad * mpebRate;
-  const solarTotal = solarEnergy + solarFixed + solarEd + extraSolar;
+  const solarTotal = solarEnergy + solarFixed + solarEd + sldcCharge + extraSolar;
 
   // Shortfall / grid top-up bill
   const shortfallEnergy = govUnitsShare * govTariff;
@@ -911,10 +973,14 @@ function computeMonthBills(inputs, mySolarSupplied, govUnitsShare){
   const govEd = govEnergy * (edPct/100);
   const govTotal = govEnergy + govFppas + govEd + extraGov;
 
+  // Final Customer Bill = Solar Bill + Government Bill (+ Shortfall top-up,
+  // which is billed at gov tariff for units the plant couldn't supply).
+  // ogTotal/originalBillAmount is NEVER added here -- it is baseline-only.
   const afterTotal = solarTotal + shortfallTotal + govTotal;
   const solarRevenue = mySolarSupplied * solarPpa;
 
-  return { ogTotal, solarTotal, shortfallTotal, shortfallEnergy, shortfallFppas, shortfallEd,
+  return { ogTotal, calculatedOgTotal, usingDirectOriginalBill, sldcCharge,
+           solarTotal, shortfallTotal, shortfallEnergy, shortfallFppas, shortfallEd,
            govTotal, afterTotal, landing, solarRevenue };
 }
 
@@ -937,6 +1003,10 @@ function buildConsumerInputs(c){
     extraGov: num('extraGov'),
     extraOg: num('extraOg'),
     extraSolar: num('extraSolar'),
+    sldcChargePerDay: num('sldcChargePerDay'),
+    sldcDays: num('sldcDays'),
+    originalBillMode: c.originalBillMode || 'calculated',
+    originalBillAmount: c.originalBillAmount,
   };
 }
 
@@ -1239,7 +1309,7 @@ function recalcSelectedMonthBills(){
   const banking = recalcBankingSnapshot(c);
   if(!c){
     ['og_energy','og_fixed','og_fppas','og_ed','og_extra','og_total','solar_energy','solar_fixed','solar_ed',
-     'solar_extra','solar_total','shortfall_energy','shortfall_fppas','shortfall_ed','shortfall_total',
+     'solar_sldc','solar_extra','solar_total','shortfall_energy','shortfall_fppas','shortfall_ed','shortfall_total',
      'gov_energy','gov_fppas','gov_ed','gov_extra','gov_total','combo_solar','combo_shortfall','combo_gov','combo_total',
      'sav_m_og','sav_m_after'].forEach(id=>set(id,0));
     document.getElementById('shortfall_units_line').textContent = '0 units';
@@ -1261,10 +1331,23 @@ function recalcSelectedMonthBills(){
   const govFppas = govEnergy * (inputs.fppasPct/100);
   const govEd = govEnergy * (inputs.edPct/100);
 
-  set('og_energy', ogEnergy); set('og_fixed', fixedCharge); set('og_fppas', ogFppas);
-  set('og_ed', ogEd); set('og_extra', inputs.extraOg); set('og_total', bills.ogTotal, true);
+  const ogRowIds = ['og_energy_row','og_fixed_row','og_fppas_row','og_ed_row','og_extra_row'];
+  if(bills.usingDirectOriginalBill){
+    ogRowIds.forEach(id=>{ document.getElementById(id).style.display = 'none'; });
+    document.getElementById('og_manual_row').style.display = '';
+    document.getElementById('og_chip').textContent = 'Manual entry · baseline only';
+  } else {
+    ogRowIds.forEach(id=>{ document.getElementById(id).style.display = ''; });
+    document.getElementById('og_manual_row').style.display = 'none';
+    document.getElementById('og_chip').textContent = 'Before solar · baseline';
+    set('og_energy', ogEnergy); set('og_fixed', fixedCharge); set('og_fppas', ogFppas);
+    set('og_ed', ogEd); set('og_extra', inputs.extraOg);
+  }
+  set('og_total', bills.ogTotal, true);
 
   set('solar_energy', solarEnergy); set('solar_fixed', fixedCharge); set('solar_ed', solarEd);
+  document.getElementById('solar_sldc_meta').textContent = '₹' + inputs.sldcChargePerDay.toLocaleString('en-IN') + '/day × ' + inputs.sldcDays + ' days';
+  set('solar_sldc', bills.sldcCharge);
   set('solar_extra', inputs.extraSolar); set('solar_total', bills.solarTotal, true);
 
   document.getElementById('shortfall_units_line').textContent = fmtU(banking.govUnitsShare) + ' units';
