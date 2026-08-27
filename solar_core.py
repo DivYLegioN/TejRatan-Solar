@@ -697,6 +697,10 @@ class MPPBTariffConfig:
     # FPPAS -- applies only to MPPB/government units, never to solar
     FPPAS_PCT: float = 4.5
 
+    # SLDC Charge -- Solar Bill ONLY (never Government/OG/Original bill).
+    # Editable from Settings via MPPBTariffConfig.configure(SLDC_CHARGE_PER_DAY=...).
+    SLDC_CHARGE_PER_DAY: float = 1000.0
+
     # -----------------------------------------------------------------
     # Validation helpers (also used directly by callers/UI layers)
     # -----------------------------------------------------------------
@@ -1035,22 +1039,34 @@ class GovOGSolarBillingEngine:
         """Landing Price = Solar PPA + Wheeling + Transmission + CSS + Additional Surcharge"""
         return solar_ppa + wheeling + transmission + css + additional_surcharge
 
+    # ---------- SLDC Charge (Solar Bill only) ----------
+    @staticmethod
+    def sldc_charge(sldc_charge_per_day: float = None, sldc_days: float = 0.0) -> float:
+        """SLDC Charge = SLDC Charge per Day x Number of Days.
+        Solar Bill only -- never added to Government Bill, OG Bill, or the
+        Original Bill baseline."""
+        rate = MPPBTariffConfig.SLDC_CHARGE_PER_DAY if sldc_charge_per_day is None else sldc_charge_per_day
+        return rate * sldc_days
+
     @staticmethod
     def solar_bill(units_utilised: float, solar_ppa: float, wheeling: float,
                     transmission: float, css: float, additional_surcharge: float,
                     contract_load: float, mpeb_fixed_charge_rate: float,
-                    duty_pct: float = None, extra_charges: float = 0.0) -> Dict:
+                    duty_pct: float = None, extra_charges: float = 0.0,
+                    sldc_charge_per_day: float = None, sldc_days: float = 0.0) -> Dict:
         landing = GovOGSolarBillingEngine.landing_price(
             solar_ppa, wheeling, transmission, css, additional_surcharge)
         energy_charges = units_utilised * landing
         fixed_amt = GovOGSolarBillingEngine.fixed_charge(contract_load, mpeb_fixed_charge_rate)
         duty_amt = GovOGSolarBillingEngine.electricity_duty(energy_charges, duty_pct)
+        sldc_amt = GovOGSolarBillingEngine.sldc_charge(sldc_charge_per_day, sldc_days)
         # FPPAS never applies to solar bill, per spec.
-        total = energy_charges + fixed_amt + duty_amt + extra_charges
+        total = energy_charges + fixed_amt + duty_amt + sldc_amt + extra_charges
         return {
             "units_utilised": units_utilised, "landing_price": landing,
             "energy_charges": energy_charges, "fixed_charge": fixed_amt,
-            "electricity_duty": duty_amt, "extra_charges": extra_charges,
+            "electricity_duty": duty_amt, "sldc_charge": sldc_amt,
+            "extra_charges": extra_charges,
             "total_solar_bill": total,
         }
 
@@ -1082,11 +1098,23 @@ class SolarizationSummaryEngine:
         }
 
     @staticmethod
-    def savings(og_bill: Dict, after_solarization: Dict) -> Dict:
-        """Before = OG Bill (baseline, pre-solarization). After = Total
-        Payable After Solarization. Returns both monthly and annual (x12)
-        savings in Rs and %."""
-        og_total = og_bill["total_og_bill"]
+    def savings(og_bill: Dict, after_solarization: Dict,
+                original_bill_mode: str = "calculated",
+                original_bill_amount: float = None) -> Dict:
+        """Before = OG Bill (baseline, pre-solarization) -- OR, if
+        original_bill_mode="direct", the exact manually-entered Original
+        Bill amount (used ONLY as the savings baseline, never added into
+        the Final Customer Bill). After = Total Payable After
+        Solarization. Returns both monthly and annual (x12) savings in Rs
+        and %."""
+        if original_bill_mode == "direct":
+            if original_bill_amount is None:
+                raise ValueError("original_bill_amount is required when original_bill_mode='direct'")
+            if original_bill_amount < 0:
+                raise ValueError("original_bill_amount must be >= 0")
+            og_total = original_bill_amount
+        else:
+            og_total = og_bill["total_og_bill"]
         after_total = after_solarization["total_payable_after_solarization"]
 
         monthly_saving = og_total - after_total
